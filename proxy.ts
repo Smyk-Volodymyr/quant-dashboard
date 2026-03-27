@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(req: NextRequest) {
+// Додано "default" сюди:
+export default function proxy(req: NextRequest) {
   const basicAuth = req.headers.get('authorization');
 
   if (basicAuth) {
     const authValue = basicAuth.split(' ')[1];
     const [user, pwd] = atob(authValue).split(':');
 
-    // Беремо логін і пароль зі змінних середовища
     const expectedUser = process.env.BASIC_AUTH_USER;
     const expectedPassword = process.env.BASIC_AUTH_PASSWORD;
 

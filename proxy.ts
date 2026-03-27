@@ -8,13 +8,15 @@ export function middleware(req: NextRequest) {
     const authValue = basicAuth.split(' ')[1];
     const [user, pwd] = atob(authValue).split(':');
 
-    // ТУТ ВСТАНОВИ СВІЙ ЛОГІН І ПАРОЛЬ
-    if (user === 'quant' && pwd === 'admin123') {
+    // Беремо логін і пароль зі змінних середовища
+    const expectedUser = process.env.BASIC_AUTH_USER;
+    const expectedPassword = process.env.BASIC_AUTH_PASSWORD;
+
+    if (user === expectedUser && pwd === expectedPassword) {
       return NextResponse.next();
     }
   }
 
-  // Якщо пароль неправильний або його немає - не пускаємо і показуємо вікно
   return new NextResponse('Authentication required', {
     status: 401,
     headers: {
@@ -23,7 +25,6 @@ export function middleware(req: NextRequest) {
   });
 }
 
-// Вказуємо, які сторінки захищати (у нашому випадку - всі)
 export const config = {
   matcher: '/:path*',
 };

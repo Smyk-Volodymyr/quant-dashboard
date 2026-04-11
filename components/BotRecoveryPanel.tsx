@@ -4,10 +4,12 @@ import React, { memo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { HardDrive, ServerCrash } from "lucide-react";
+import { HardDrive } from "lucide-react";
+import { updateRecoveryBaselineAction } from "@/app/actions/system"; // Підключаємо наш Server Action
 
+// 1. Схема валідації (повертаємо класичний z.number)
+// 1. Схема валідації
 const recoverySchema = z.object({
   startingBalance: z.number({
     message: "Введіть коректне число",
@@ -22,9 +24,8 @@ interface BotRecoveryPanelProps {
   currentBalance?: number;
 }
 
+// 2. UI Компонент
 export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ currentBalance }) => {
-  const supabase = createClient();
-
   const {
     register,
     handleSubmit,
@@ -37,31 +38,33 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
     },
   });
 
+  // Синхронізуємо форму, якщо дані змінилися на бекенді
   useEffect(() => {
     if (currentBalance !== undefined) {
       reset({ startingBalance: currentBalance }, { keepDirty: false });
     }
   }, [currentBalance, reset]);
 
+  // 3. Логіка збереження через Server Action
   const onSubmit = async (data: RecoveryForm) => {
     try {
-      const { error } = await supabase
-        .from("system_state")
-        .update({ starting_balance: data.startingBalance })
-        .eq("id", 1);
+      const result = await updateRecoveryBaselineAction(data.startingBalance);
 
-      if (error) throw error;
+      if (result.error) {
+        throw new Error(result.error);
+      }
 
-      toast.success("Crash Recovery Updated", {
+      toast.success("System Updated", {
         description: `Новий baseline: $${data.startingBalance.toFixed(2)}. Бот захищений.`,
         icon: <HardDrive className="text-green-500" size={16} />,
       });
 
-      reset(data);
-    } catch (err) {
+      // Оновлюємо стан форми, щоб isDirty знову стало false
+      reset({ startingBalance: data.startingBalance });
+    } catch (err: any) {
       console.error("Помилка оновлення recovery baseline:", err);
       toast.error("Помилка синхронізації", {
-        description: "Не вдалося зберегти налаштування в Supabase.",
+        description: err.message || "Не вдалося зберегти налаштування на сервері.",
       });
     }
   };
@@ -83,12 +86,21 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
               <input
                 type="number"
                 step="0.01"
-                className={`w-full bg-[#000000]/50 border pl-8 pr-4 py-3 rounded-xl text-slate-100 font-mono text-sm focus:ring-1 focus:outline-none transition-all ${errors.startingBalance ? 'border-red-500/50 focus:border-red-500/50' : 'border-white/10 focus:border-blue-500/50 hover:border-white/20'
+                className={`w-full bg-[#000000]/50 border pl-8 pr-4 py-3 rounded-xl text-slate-100 font-mono text-sm focus:ring-1 focus:outline-none transition-all ${errors.startingBalance
+                  ? 'border-red-500/50 focus:border-red-500/50'
+                  : 'border-white/10 focus:border-blue-500/50 hover:border-white/20'
                   }`}
-                {...register('startingBalance')}
+                // ВАЖЛИВО: додаємо valueAsNumber: true
+                {...register('startingBalance', { valueAsNumber: true })}
                 disabled={isSubmitting}
               />
             </div>
+            {/* Відображення помилки валідації */}
+            {errors.startingBalance && (
+              <span className="text-xs text-red-400 font-mono">
+                {errors.startingBalance.message}
+              </span>
+            )}
           </div>
 
           <button
@@ -96,7 +108,17 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
             disabled={isSubmitting || !isDirty}
             className="w-full py-3 bg-white/5 text-slate-300 border border-white/5 rounded-xl hover:bg-white/10 hover:text-white focus:ring-2 focus:ring-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all font-mono text-xs uppercase tracking-widest flex items-center justify-center"
           >
-            {isSubmitting ? "SYNCING..." : "UPDATE SYSTEM"}
+            {isSubmitting ? (
+              <span className="flex items-center">
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                SYNCING...
+              </span>
+            ) : (
+              "UPDATE SYSTEM"
+            )}
           </button>
         </form>
       </div>

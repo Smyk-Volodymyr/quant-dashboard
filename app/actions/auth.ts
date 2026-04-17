@@ -4,7 +4,6 @@ import { z } from "zod";
 import { createSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 
-// Схема валідації
 const loginSchema = z.object({
   username: z.string().min(1, "Введіть логін"),
   password: z.string().min(1, "Введіть пароль"),
@@ -27,13 +26,12 @@ export async function loginAction(
 
   const { username, password } = parsed.data;
 
-  // Безпечна перевірка з .env
   if (
     username === process.env.ADMIN_USERNAME &&
     password === process.env.ADMIN_PASSWORD
   ) {
     await createSession(username);
-    redirect("/"); // Редирект на головну (Dashboard) після успіху
+    redirect("/");
   }
 
   return { error: "Невірний логін або пароль" };

@@ -71,7 +71,7 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
 
   return (
     <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col relative overflow-hidden group">
-      <div className="absolute -inset-1 bg-gradient-to-br from-blue-600/10 to-transparent blur opacity-50 pointer-events-none"></div>
+      <div className="absolute -inset-1 bg-linear-to-br from-blue-600/10 to-transparent blur opacity-50 pointer-events-none"></div>
 
       <div className="px-5 py-4 border-b border-white/5 flex items-center relative z-10">
         <HardDrive size={16} className="mr-2 text-blue-400" />

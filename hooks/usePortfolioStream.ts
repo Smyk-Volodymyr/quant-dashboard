@@ -26,16 +26,25 @@ export function usePortfolioStream() {
         const { data: historyData, error: historyError } = await supabase
           .from("portfolio_snapshots")
           .select("timestamp, total_equity")
-          .order("timestamp", { ascending: true })
+          .order("timestamp", { ascending: false })
           .limit(500);
 
         if (historyError) throw historyError;
 
         if (isMounted && historyData) {
-          const formattedData = historyData.map(item => ({
-            time: Math.floor(new Date(item.timestamp).getTime() / 1000),
-            value: Number(item.total_equity)
-          }));
+          const chronologicalData = historyData.reverse();
+
+          const uniqueDataMap = new Map();
+          
+          chronologicalData.forEach(item => {
+            const timeSec = Math.floor(new Date(item.timestamp).getTime() / 1000);
+            uniqueDataMap.set(timeSec, {
+              time: timeSec,
+              value: Number(item.total_equity)
+            });
+          });
+
+          const formattedData = Array.from(uniqueDataMap.values()).sort((a, b) => a.time - b.time);
           setChartData(formattedData);
         }
       } catch (err) {
@@ -53,13 +62,32 @@ export function usePortfolioStream() {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "portfolio_snapshots" }, (payload) => {
         const newSnap = payload.new;
         setSnapshot(newSnap);
-        setChartData((currentData) => [
-          ...currentData,
-          {
-            time: Math.floor(new Date(newSnap.timestamp).getTime() / 1000),
-            value: Number(newSnap.total_equity)
+        
+        const newTimeSec = Math.floor(new Date(newSnap.timestamp).getTime() / 1000);
+
+        setChartData((currentData) => {
+          if (currentData.length === 0) return [{ time: newTimeSec, value: Number(newSnap.total_equity) }];
+          
+          const lastPoint = currentData[currentData.length - 1];
+
+          // Якщо секунда та сама, оновлюємо існуючу точку (графік підтримує оновлення поточного часу)
+          if (lastPoint.time === newTimeSec) {
+            const updatedData = [...currentData];
+            updatedData[updatedData.length - 1] = { time: newTimeSec, value: Number(newSnap.total_equity) };
+            return updatedData;
           }
-        ]);
+
+          // Якщо час пізніший, додаємо нову точку
+          if (newTimeSec > lastPoint.time) {
+            return [
+              ...currentData,
+              { time: newTimeSec, value: Number(newSnap.total_equity) }
+            ];
+          }
+
+          // Якщо прийшли старі дані (out-of-order), ігноруємо їх щоб не зламати графік
+          return currentData;
+        });
       })
       .subscribe();
 
@@ -69,9 +97,7 @@ export function usePortfolioStream() {
     };
   }, []);
 
-  // === НОВА ЛОГІКА АНАЛІТИКИ (Max Drawdown & Exposure) ===
   const analytics = useMemo(() => {
-    // 1. Розрахунок Max Drawdown (Peak-to-Trough)
     let peak = 0;
     let maxDrawdown = 0;
     
@@ -81,15 +107,13 @@ export function usePortfolioStream() {
       if (currentDrawdown > maxDrawdown) maxDrawdown = currentDrawdown;
     });
 
-    // 2. Розрахунок Exposure (Завантаженість портфеля)
     const total = snapshot ? Number(snapshot.total_equity) : 0;
     const free = snapshot ? Number(snapshot.free_balance) : 0;
-    const exposureUsdt = Math.max(0, total - free); // Кошти у відкритих позиціях
+    const exposureUsdt = Math.max(0, total - free);
     const exposurePct = total > 0 ? (exposureUsdt / total) * 100 : 0;
 
     return { maxDrawdown, exposureUsdt, exposurePct };
   }, [chartData, snapshot]);
 
-  // Повертаємо analytics разом з іншими даними
   return { snapshot, chartData, analytics, isPortfolioLoading: isLoading };
 }

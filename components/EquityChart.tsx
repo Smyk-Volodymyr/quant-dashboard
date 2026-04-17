@@ -146,15 +146,19 @@ export const EquityChart: React.FC<EquityChartProps> = memo(({ data }) => {
       console.log(`📈 EquityChart: Loaded ${formattedData.length} historical points`);
     }
     // Інкрементальний апдейт (одна точка)
+    // Інкрементальний апдейт (одна точка)
     else {
       const lastIncomingPoint = formattedData[formattedData.length - 1];
       const lastIncomingTime = lastIncomingPoint.time as number;
 
-      if (lastIncomingTime > lastProcessedTimeRef.current) {
-        // === ОПТИМІЗАЦІЯ ===
-        // update() додає одну точку, не перемальовуючи canvas
-        series.update(lastIncomingPoint);
-        lastProcessedTimeRef.current = lastIncomingTime;
+      // ДОЗВОЛЯЄМО оновлення тієї ж самої секунди (>=)
+      if (lastIncomingTime >= lastProcessedTimeRef.current) {
+        try {
+          series.update(lastIncomingPoint);
+          lastProcessedTimeRef.current = lastIncomingTime;
+        } catch (error) {
+          console.error("Помилка оновлення графіка:", error);
+        }
       }
     }
   }, [data]); // Залежність тільки від data

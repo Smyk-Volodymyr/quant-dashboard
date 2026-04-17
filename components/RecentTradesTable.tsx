@@ -1,6 +1,7 @@
 import React, { useRef, memo, useState, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { TradeDrawer } from './TradeDrawer';
 
 export interface Trade {
   id: string;
@@ -9,7 +10,11 @@ export interface Trade {
   entry_price: number;
   exit_price: number;
   pnl_usdt: number;
+  pnl_percent: number;
+  entry_time: string;
   exit_time: string;
+  close_reason: string | null;
+  obi: number;
 }
 
 interface RecentTradesTableProps {
@@ -26,6 +31,15 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({ trade
   // Стан пагінації
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 50; // Кількість угод на одну сторінку
+
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // НОВЕ: Функція відкриття Drawer'а
+  const handleRowClick = (trade: Trade) => {
+    setSelectedTrade(trade);
+    setIsDrawerOpen(true);
+  };
 
   // 1. Отримуємо унікальні монети для Dropdown
   const uniqueSymbols = useMemo(() => {
@@ -124,6 +138,7 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({ trade
                 <div
                   key={trade.id}
                   role="row"
+                  onClick={() => handleRowClick(trade)}
                   className="flex items-center absolute top-0 left-0 w-full border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors"
                   style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
                 >
@@ -181,6 +196,11 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({ trade
           </button>
         </div>
       )}
+      <TradeDrawer
+        trade={selectedTrade}
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+      />
     </div>
   );
 });

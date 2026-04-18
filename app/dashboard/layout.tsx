@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Activity, Settings, ListPlus, TerminalSquare } from "lucide-react";
+import { useTerminalHotkeys } from "@/hooks/useTerminalHotkeys";
 
 export default function DashboardLayout({
   children,
@@ -11,6 +12,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  useTerminalHotkeys();
 
   const navItems = [
     {
@@ -25,18 +27,13 @@ export default function DashboardLayout({
       icon: ListPlus,
       exact: false,
     },
-    // У майбутньому тут можна додати:
-    // { name: "System Config", href: "/dashboard/settings/config", icon: Settings },
   ];
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-200 font-sans flex">
-      {/* Декоративний фон для всього додатку */}
       <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-blue-900/5 via-[#050505] to-[#050505] pointer-events-none -z-10" />
 
-      {/* SIDEBAR */}
       <aside className="w-64 border-r border-white/5 bg-[#050505]/80 backdrop-blur-xl flex-col shrink-0 hidden md:flex">
-        {/* Логотип */}
         <div className="h-20 flex items-center px-6 border-b border-white/5">
           <div className="h-8 w-8 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center justify-center mr-3">
             <Activity size={16} className="text-blue-400" />
@@ -47,7 +44,6 @@ export default function DashboardLayout({
           </div>
         </div>
 
-        {/* Навігація */}
         <nav className="flex-1 px-4 py-6 space-y-1">
           <p className="px-2 text-xs font-mono font-semibold text-slate-500 uppercase tracking-widest mb-4">
             Menu
@@ -78,9 +74,7 @@ export default function DashboardLayout({
         </nav>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {/* Мобільний хедер (заглушка для мобілок) */}
         <header className="md:hidden h-16 border-b border-white/5 flex items-center px-4 shrink-0 bg-[#050505]/80 backdrop-blur-xl">
           <Activity size={20} className="text-blue-400 mr-2" />
           <span className="font-mono font-bold text-sm text-white">QUANT_CORE</span>

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useSystemState } from "@/hooks/useSystemState";
-import { WhitelistManager } from "@/components/WhitelistManager"; // Компонент, який ми написали раніше
+import { WhitelistManager } from "@/components/WhitelistManager";
 import { Network, ServerCrash } from "lucide-react";
 
 export default function WhitelistPage() {
@@ -29,7 +29,6 @@ export default function WhitelistPage() {
   return (
     <main className="p-4 md:p-6 lg:p-8 max-w-4xl mx-auto w-full flex flex-col gap-8 animate-in fade-in duration-500">
 
-      {/* Хедер сторінки */}
       <header className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight text-white flex items-center">
           Pairs Management
@@ -39,9 +38,7 @@ export default function WhitelistPage() {
         </p>
       </header>
 
-      {/* Основний контент */}
       <section className="grid gap-6">
-        {/* Передаємо дані з хука в наш компонент */}
         <WhitelistManager currentWhitelist={sysState.current_dynamic_whitelist || []} />
       </section>
 

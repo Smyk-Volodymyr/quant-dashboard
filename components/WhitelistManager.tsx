@@ -80,7 +80,6 @@ export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ current
 
   return (
     <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col relative overflow-hidden">
-      {/* Заголовок панелі */}
       <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between relative z-10">
         <div className="flex items-center">
           <ListPlus size={16} className="mr-2 text-blue-400" aria-hidden="true" />
@@ -93,7 +92,6 @@ export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ current
       </div>
 
       <div className="p-5 flex-1 flex flex-col gap-4 relative z-10">
-        {/* Форма додавання */}
         <form onSubmit={handleSubmit(onAddPair)} noValidate className="flex flex-col gap-1">
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -125,7 +123,6 @@ export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ current
           )}
         </form>
 
-        {/* Список монет (з кастомним скролом для великої кількості) */}
         <div className="flex-1 bg-[#000000]/30 border border-white/5 rounded-xl overflow-hidden flex flex-col">
           {localList.length === 0 ? (
             <div className="p-6 text-center text-slate-600 font-mono text-xs flex flex-col items-center justify-center h-32">

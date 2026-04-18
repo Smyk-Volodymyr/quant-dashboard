@@ -28,21 +28,18 @@ export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose
   return (
     // Backdrop (Темний фон з блюром)
     <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Клікабельний бекграунд для закриття */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Сама панель (Slide-over) */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="drawer-title"
         className="relative w-full max-w-md h-full bg-[#050505] border-l border-white/10 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300"
       >
-        {/* Хедер Drawer'а */}
         <header className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-[#000000]/50">
           <div className="flex items-center gap-3">
             <div className={`h-10 w-10 rounded-xl flex items-center justify-center border ${isProfit ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
@@ -67,10 +64,8 @@ export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose
           </button>
         </header>
 
-        {/* Контент Drawer'а (Скролиться, якщо не влазить) */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* Головний результат (PnL) */}
           <div className="flex flex-col items-center justify-center py-8 bg-[#000000]/30 border border-white/5 rounded-2xl">
             <span className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-2">Realized PnL</span>
             <div className={`text-4xl font-mono font-bold tracking-tighter ${isProfit ? 'text-green-500' : 'text-red-500'}`}>
@@ -81,7 +76,6 @@ export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose
             </div>
           </div>
 
-          {/* Деталі входу/виходу */}
           <div className="grid grid-cols-2 gap-4">
             <DetailCard
               label="Entry Price"
@@ -123,7 +117,6 @@ export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose
 
         </div>
 
-        {/* Футер Drawer'а */}
         <footer className="p-6 border-t border-white/5 bg-[#000000]/50">
           <p className="text-[10px] text-slate-600 font-mono uppercase text-center tracking-widest">
             Trade ID: <span className="opacity-50">{trade.id}</span>

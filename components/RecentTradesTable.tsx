@@ -81,7 +81,6 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({ trade
   return (
     <div className="w-full flex flex-col h-full bg-[#09090b] text-sm">
 
-      {/* TOOLBAR: Фільтри */}
       <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Filter size={16} className="text-slate-500" aria-hidden="true" />
@@ -115,7 +114,6 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({ trade
         </div>
       </div>
 
-      {/* HEADER (Зафіксований) */}
       <div role="rowgroup" className="flex sticky top-0 z-10 bg-slate-900/90 backdrop-blur border-b border-slate-800 text-xs text-slate-400 uppercase font-medium">
         <div role="columnheader" className="px-6 py-3 w-[20%]">Time</div>
         <div role="columnheader" className="px-6 py-3 w-[20%]">Pair</div>
@@ -124,7 +122,6 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({ trade
         <div role="columnheader" className="px-6 py-3 w-[20%] text-right">PnL (USDT)</div>
       </div>
 
-      {/* BODY (Віртуалізований скрол-контейнер) */}
       <div ref={parentRef} className="flex-1 overflow-auto outline-none min-h-75" tabIndex={0}>
         {paginatedTrades.length > 0 ? (
           <div
@@ -172,7 +169,6 @@ export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({ trade
         )}
       </div>
 
-      {/* FOOTER: Пагінація */}
       {totalPages > 1 && (
         <div className="px-6 py-3 border-t border-slate-800 bg-slate-900/20 flex items-center justify-between">
           <button

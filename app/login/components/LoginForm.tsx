@@ -42,12 +42,10 @@ export const LoginForm = () => {
 
   return (
     <article className="w-full max-w-sm relative group">
-      {/* Ефект світіння позаду картки */}
       <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
 
       <div className="relative bg-[#09090b]/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
 
-        {/* Декоративна лінія зверху */}
         <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
 
         <div className="px-8 pt-8 pb-6 flex flex-col items-center justify-center text-center">
@@ -81,8 +79,8 @@ export const LoginForm = () => {
                   autoComplete="username"
                   placeholder="admin"
                   className={`w-full bg-[#000000]/50 border px-4 py-3 rounded-xl text-slate-200 font-mono text-sm placeholder:text-slate-700 focus:ring-1 focus:outline-none transition-all ${errors.username
-                      ? "border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50"
-                      : "border-white/5 focus:ring-blue-500/50 focus:border-blue-500/50 hover:border-white/10"
+                    ? "border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50"
+                    : "border-white/5 focus:ring-blue-500/50 focus:border-blue-500/50 hover:border-white/10"
                     }`}
                   {...register("username")}
                   disabled={isPending}
@@ -103,8 +101,8 @@ export const LoginForm = () => {
                   autoComplete="current-password"
                   placeholder="••••••••"
                   className={`w-full bg-[#000000]/50 border px-4 py-3 rounded-xl text-slate-200 font-mono text-sm placeholder:text-slate-700 focus:ring-1 focus:outline-none transition-all ${errors.password
-                      ? "border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50"
-                      : "border-white/5 focus:ring-blue-500/50 focus:border-blue-500/50 hover:border-white/10"
+                    ? "border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50"
+                    : "border-white/5 focus:ring-blue-500/50 focus:border-blue-500/50 hover:border-white/10"
                     }`}
                   {...register("password")}
                   disabled={isPending}

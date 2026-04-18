@@ -6,10 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { HardDrive } from "lucide-react";
-import { updateRecoveryBaselineAction } from "@/app/actions/system"; // Підключаємо наш Server Action
+import { updateRecoveryBaselineAction } from "@/app/actions/system";
 
-// 1. Схема валідації (повертаємо класичний z.number)
-// 1. Схема валідації
 const recoverySchema = z.object({
   startingBalance: z.number({
     message: "Введіть коректне число",
@@ -24,7 +22,6 @@ interface BotRecoveryPanelProps {
   currentBalance?: number;
 }
 
-// 2. UI Компонент
 export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ currentBalance }) => {
   const {
     register,
@@ -38,14 +35,12 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
     },
   });
 
-  // Синхронізуємо форму, якщо дані змінилися на бекенді
   useEffect(() => {
     if (currentBalance !== undefined) {
       reset({ startingBalance: currentBalance }, { keepDirty: false });
     }
   }, [currentBalance, reset]);
 
-  // 3. Логіка збереження через Server Action
   const onSubmit = async (data: RecoveryForm) => {
     try {
       const result = await updateRecoveryBaselineAction(data.startingBalance);
@@ -59,7 +54,6 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
         icon: <HardDrive className="text-green-500" size={16} />,
       });
 
-      // Оновлюємо стан форми, щоб isDirty знову стало false
       reset({ startingBalance: data.startingBalance });
     } catch (err: any) {
       console.error("Помилка оновлення recovery baseline:", err);
@@ -90,12 +84,10 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
                   ? 'border-red-500/50 focus:border-red-500/50'
                   : 'border-white/10 focus:border-blue-500/50 hover:border-white/20'
                   }`}
-                // ВАЖЛИВО: додаємо valueAsNumber: true
                 {...register('startingBalance', { valueAsNumber: true })}
                 disabled={isSubmitting}
               />
             </div>
-            {/* Відображення помилки валідації */}
             {errors.startingBalance && (
               <span className="text-xs text-red-400 font-mono">
                 {errors.startingBalance.message}

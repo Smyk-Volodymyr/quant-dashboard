@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Wifi, WifiOff } from 'lucide-react';
 
 interface PingIndicatorProps {
-  lastPing?: string; // Приймаємо ISO рядок з бази
+  lastPing?: string;
 }
 
 export const PingIndicator: React.FC<PingIndicatorProps> = ({ lastPing }) => {

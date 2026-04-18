@@ -17,7 +17,6 @@ export default function DashboardPage() {
   const { sysState, isStateLoading } = useSystemState();
   const { trades, metrics, isTradesLoading } = useTradeStream();
 
-  // Показуємо Skeleton тільки поки вантажаться критичні дані конфігу
   if (isStateLoading || isPortfolioLoading) {
     return (
       <div className="h-full min-h-[60vh] flex items-center justify-center font-mono text-slate-500 animate-pulse">
@@ -28,22 +27,17 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col h-full p-4 md:p-6 lg:p-8 gap-6 animate-in fade-in duration-500">
-
-      {/* HEADER СТОРІНКИ (Логотип тепер у Sidebar, залишаємо лише суть) */}
+    <div className="flex flex-col h-full p-4 lg:p-6 gap-4 animate-in fade-in duration-500">
       <header className="flex items-center justify-between border-b border-white/5 pb-6 shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Terminal Overview</h1>
           <p className="text-sm text-slate-500 font-mono mt-1">Live market execution and portfolio metrics</p>
         </div>
 
-        {/* Статус системи (Важливо залишити на головному екрані) */}
         <div className="flex items-center gap-3">
 
-          {/* НОВИЙ КОМПОНЕНТ: Індикатор Пінгу */}
           <PingIndicator lastPing={sysState?.last_ping} />
 
-          {/* Існуючий загальний статус системи */}
           <div className="flex items-center gap-2 px-4 py-2 bg-[#000000]/50 backdrop-blur-xl border border-white/5 rounded-full shadow-lg">
             <div className={`h-2.5 w-2.5 rounded-full ${sysState?.kill_switch_active ? 'bg-red-500 animate-pulse' : sysState?.is_running ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-yellow-500'}`} />
             <span className="text-xs font-mono tracking-widest text-slate-300 uppercase">
@@ -54,7 +48,6 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* KPI METRICS */}
       <section className="grid grid-cols-2 lg:grid-cols-6 gap-4 shrink-0">
         <KPICard title="Total Equity" value={`$${Number(snapshot?.total_equity || 0).toFixed(2)}`} icon={Wallet} />
         <KPICard title="Free Balance" value={`$${Number(snapshot?.free_balance || 0).toFixed(2)}`} icon={Wallet} color="text-slate-400" />
@@ -64,19 +57,18 @@ export default function DashboardPage() {
         <KPICard title="Max Drawdown" value={`-${analytics.maxDrawdown.toFixed(2)}%`} icon={ShieldAlert} color="text-orange-400" />
       </section>
 
-      {/* WORKSPACE */}
-      <section className="flex-1 flex flex-col lg:flex-row gap-6 min-h-150">
-        {/* Ліва панель: Графік + Таблиця */}
-        <div className="flex-1 flex flex-col gap-6">
+      <section className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
 
-          <div className="h-[50%] min-h-75 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl p-4 shadow-2xl relative overflow-hidden group">
+        <div className="flex-1 min-w-0 flex flex-col gap-4 min-h-0">
+
+          <div className="flex-1 min-h-0 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl p-4 shadow-2xl relative overflow-hidden group">
             <div className="absolute inset-0 bg-linear-to-b from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
             <WidgetErrorBoundary widgetName="Equity Chart">
               <EquityChart data={chartData} />
             </WidgetErrorBoundary>
           </div>
 
-          <div className="h-[50%] min-h-75 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden relative">
+          <div className="flex-1 min-h-0 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden relative">
             <WidgetErrorBoundary widgetName="Recent Trades">
               <RecentTradesTable trades={trades} />
             </WidgetErrorBoundary>
@@ -84,18 +76,19 @@ export default function DashboardPage() {
 
         </div>
 
-        {/* Права панель: Керування */}
-        <aside className="w-full lg:w-80 flex flex-col gap-6 shrink-0">
+        <aside className="w-full lg:w-72 flex flex-col gap-4 shrink-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/10">
           <BotRecoveryPanel currentBalance={sysState?.starting_balance} />
-          <ManualOverridesPanel isRunning={sysState?.is_running} killSwitchActive={sysState?.kill_switch_active} />
-        </aside>
+          <ManualOverridesPanel
+            isRunning={sysState?.is_running ?? false}
+            killSwitchActive={sysState?.kill_switch_active ?? false}
+          />        </aside>
+
       </section>
 
     </div>
   );
 }
 
-// Міні-компонент для KPI картки
 function KPICard({ title, value, icon: Icon, color = "text-white" }: { title: string, value: string | number, icon: any, color?: string }) {
   return (
     <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl p-5 flex flex-col gap-3 relative overflow-hidden group hover:border-white/10 transition-colors">

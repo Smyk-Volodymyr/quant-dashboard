@@ -4,23 +4,22 @@ import React, { useEffect, useRef, memo } from "react";
 import { createChart, ColorType, IChartApi, ISeriesApi, AreaSeries, Time, DeepPartial, ChartOptions } from "lightweight-charts";
 
 interface ChartDataPoint {
-  time: number; // Unix timestamp у секундах
-  value: number; // Total Equity
+  time: number;
+  value: number;
 }
 
 interface EquityChartProps {
   data: ChartDataPoint[];
 }
 
-// Конфігурація стилів графіка (винесено за межі компонента)
 const chartOptions: DeepPartial<ChartOptions> = {
   layout: {
-    background: { type: ColorType.Solid, color: "transparent" }, // Прозорість!
-    textColor: "#64748b", // slate-500
+    background: { type: ColorType.Solid, color: "transparent" },
+    textColor: "#64748b",
     fontFamily: "Geist Mono, ui-monospace, monospace",
   },
   grid: {
-    vertLines: { color: "rgba(255, 255, 255, 0.03)" }, // Ледь помітні лінії
+    vertLines: { color: "rgba(255, 255, 255, 0.03)" },
     horzLines: { color: "rgba(255, 255, 255, 0.03)" },
   },
   timeScale: {
@@ -41,7 +40,7 @@ const chartOptions: DeepPartial<ChartOptions> = {
     pressedMouseMove: true,
   },
   crosshair: {
-    mode: 1, // Magnet mode
+    mode: 1,
     vertLine: { color: "#3b82f6", labelBackgroundColor: "#3b82f6" },
     horzLine: { color: "#3b82f6", labelBackgroundColor: "#3b82f6" },
   },
@@ -53,30 +52,23 @@ const chartOptions: DeepPartial<ChartOptions> = {
 export const EquityChart: React.FC<EquityChartProps> = memo(({ data }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  // Використовуємо useRef для зберігання інстансів за межами React-стейту
   const chartApiRef = useRef<IChartApi | null>(null);
   const seriesApiRef = useRef<ISeriesApi<"Area"> | null>(null);
 
-  // Ref для відстеження останньої обробленої точки даних (дублікати)
   const lastProcessedTimeRef = useRef<number>(0);
 
-  // === ЕФЕКТ 1: Ініціалізація та адаптивність ===
-  // Спрацьовує ОДИН раз при монтуванні
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // 1. Створюємо інстанс графіка (ініціалізуємо його з розмірами контейнера)
     const chart = createChart(chartContainerRef.current, {
       ...chartOptions,
-      // Ми не можемо покластися на width/height контейнера зараз, 
-      // тому ініціалізуємо з мінімальними розмірами
       width: 100,
       height: 100,
     });
     chartApiRef.current = chart;
 
     const series = chart.addSeries(AreaSeries, {
-      lineColor: "#3b82f6", // або "#06b6d4" для неонового cyan
+      lineColor: "#3b82f6",
       topColor: "rgba(59, 130, 246, 0.2)",
       bottomColor: "rgba(59, 130, 246, 0.0)",
       lineWidth: 2,
@@ -84,51 +76,40 @@ export const EquityChart: React.FC<EquityChartProps> = memo(({ data }) => {
     });
     seriesApiRef.current = series;
 
-    // 3. === КРИТИЧНО ДЛЯ RESIZABLE ПАНЕЛЕЙ ===
-    // Створюємо ResizeObserver для спостереження за контейнером
     const resizeObserver = new ResizeObserver((entries) => {
       if (!entries.length) return;
 
       const { width, height } = entries[0].contentRect;
 
-      // Застосовуємо нові розміри до canvas
       if (chartApiRef.current) {
         chartApiRef.current.applyOptions({
-          width: Math.floor(width), // floor для уникнення артефактів sub-pixel
+          width: Math.floor(width),
           height: Math.floor(height),
         });
 
-        // Можна опціонально скролити до нової точки, щоб вона завжди була видима
-        // chart.timeScale().scrollToPosition(0, true);
       }
     });
 
-    // Починаємо спостереження
     resizeObserver.observe(chartContainerRef.current);
 
     console.log("📈 EquityChart: Initialized with core logic & ResizeObserver");
 
-    // Cleanup: Очищення пам'яті
     return () => {
       console.log("📉 EquityChart: Destroyed instances");
       resizeObserver.disconnect();
       chart.remove();
-      // Очищаємо посилання
       chartApiRef.current = null;
       seriesApiRef.current = null;
       lastProcessedTimeRef.current = 0;
     };
-  }, []); // Порожній масив залежностей!
+  }, []);
 
-  // === ЕФЕКТ 2: Обробка потокових даних (При зміні пропса data) ===
   useEffect(() => {
     const series = seriesApiRef.current;
     const chart = chartApiRef.current;
 
-    // Перевіряємо, чи є дані для відображення
     const dataAvailable = data && data.length > 0;
 
-    // Якщо даних немає, нічого не робимо (залишаємо Skeleton Loader)
     if (!series || !chart || !dataAvailable) return;
 
     const formattedData = data.map(item => ({
@@ -136,22 +117,18 @@ export const EquityChart: React.FC<EquityChartProps> = memo(({ data }) => {
       value: item.value
     }));
 
-    // Початкове завантаження історичних даних
     if (lastProcessedTimeRef.current === 0) {
       series.setData(formattedData);
-      chart.timeScale().fitContent(); // Масштабуємо
+      chart.timeScale().fitContent();
 
       const lastPoint = formattedData[formattedData.length - 1];
       lastProcessedTimeRef.current = lastPoint.time as number;
       console.log(`📈 EquityChart: Loaded ${formattedData.length} historical points`);
     }
-    // Інкрементальний апдейт (одна точка)
-    // Інкрементальний апдейт (одна точка)
     else {
       const lastIncomingPoint = formattedData[formattedData.length - 1];
       const lastIncomingTime = lastIncomingPoint.time as number;
 
-      // ДОЗВОЛЯЄМО оновлення тієї ж самої секунди (>=)
       if (lastIncomingTime >= lastProcessedTimeRef.current) {
         try {
           series.update(lastIncomingPoint);
@@ -161,11 +138,10 @@ export const EquityChart: React.FC<EquityChartProps> = memo(({ data }) => {
         }
       }
     }
-  }, [data]); // Залежність тільки від data
+  }, [data]);
 
   return (
     <div className="w-full h-full relative group">
-      {/* Skeleton Loader: Рендеримо, якщо масив даних порожній */}
       {data.length === 0 && (
         <div
           role="status"
@@ -179,7 +155,6 @@ export const EquityChart: React.FC<EquityChartProps> = memo(({ data }) => {
           Збір даних...
         </div>
       )}
-      {/* Головний контейнер (Важливо: width: 100%, height: 100%) */}
       <div ref={chartContainerRef} className="w-full h-full outline-none" />
     </div>
   );

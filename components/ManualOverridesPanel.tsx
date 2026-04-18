@@ -40,7 +40,6 @@ export const ManualOverridesPanel: React.FC<ManualOverridesPanelProps> = memo(({
       </div>
 
       <div className="p-5 flex-1 flex flex-col gap-5 relative z-10">
-        {/* Toggle Engine */}
         <div className="flex items-center justify-between p-4 bg-[#000000]/50 border border-white/5 rounded-xl">
           <div>
             <h3 className="text-xs font-mono uppercase text-slate-300">Trading Engine</h3>
@@ -57,16 +56,15 @@ export const ManualOverridesPanel: React.FC<ManualOverridesPanelProps> = memo(({
           </button>
         </div>
 
-        {/* Kill Switch */}
         <div className="flex flex-col gap-2">
           <button
             onClick={handleKillSwitchClick}
             disabled={isMutating || killSwitchActive}
             className={`w-full py-4 rounded-xl font-mono font-bold text-xs uppercase tracking-widest transition-all border flex items-center justify-center disabled:opacity-50 ${killSwitchActive
-                ? 'bg-red-950/30 text-red-500 border-red-900/50 cursor-not-allowed'
-                : confirmKill
-                  ? 'bg-red-600 text-white border-red-500 hover:bg-red-500 shadow-[0_0_20px_rgba(220,38,38,0.4)] animate-pulse'
-                  : 'bg-red-500/5 text-red-500 border-red-500/20 hover:bg-red-500/10'
+              ? 'bg-red-950/30 text-red-500 border-red-900/50 cursor-not-allowed'
+              : confirmKill
+                ? 'bg-red-600 text-white border-red-500 hover:bg-red-500 shadow-[0_0_20px_rgba(220,38,38,0.4)] animate-pulse'
+                : 'bg-red-500/5 text-red-500 border-red-500/20 hover:bg-red-500/10'
               }`}
           >
             <AlertOctagon className="mr-2" size={16} />

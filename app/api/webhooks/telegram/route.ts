@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
 export async function POST(req: Request) {
   try {
+    // 💡 ПЕРЕНЕСЕНО СЮДИ: Тепер клієнт створюється лише під час реального запиту
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!
+    );
+
     const body = await req.json();
 
     if (!body.message || !body.message.text) {
@@ -19,7 +20,6 @@ export async function POST(req: Request) {
 
     if (text.startsWith('/start ')) {
       const userId = text.split(' ')[1];
-
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       
       if (uuidRegex.test(userId)) {

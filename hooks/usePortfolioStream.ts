@@ -1,6 +1,7 @@
+"use client";
+
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
 
 export function usePortfolioStream() {
   const [snapshot, setSnapshot] = useState<any>(null);
@@ -27,29 +28,20 @@ export function usePortfolioStream() {
           .from("portfolio_snapshots")
           .select("timestamp, total_equity")
           .order("timestamp", { ascending: false })
-          .limit(500);
+          .limit(150);
 
         if (historyError) throw historyError;
 
         if (isMounted && historyData) {
-          const chronologicalData = historyData.reverse();
-
-          const uniqueDataMap = new Map();
+          const formattedData = historyData.reverse().map((item: any) => ({
+            time: Math.floor(new Date(item.timestamp).getTime() / 1000),
+            value: Number(item.total_equity)
+          }));
           
-          chronologicalData.forEach(item => {
-            const timeSec = Math.floor(new Date(item.timestamp).getTime() / 1000);
-            uniqueDataMap.set(timeSec, {
-              time: timeSec,
-              value: Number(item.total_equity)
-            });
-          });
-
-          const formattedData = Array.from(uniqueDataMap.values()).sort((a, b) => a.time - b.time);
           setChartData(formattedData);
         }
       } catch (err) {
         console.error("Помилка завантаження портфеля:", err);
-        toast.error("Помилка даних", { description: "Не вдалося завантажити історію балансу." });
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -57,9 +49,13 @@ export function usePortfolioStream() {
 
     fetchPortfolio();
 
-    const subscription = supabase
-      .channel("snapshots_channel")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "portfolio_snapshots" }, (payload) => {
+    const channelName = `snapshots_channel_${crypto.randomUUID()}`;
+    const channel = supabase.channel(channelName);
+
+    channel.on(
+      "postgres_changes", 
+      { event: "INSERT", schema: "public", table: "portfolio_snapshots" }, 
+      (payload) => {
         const newSnap = payload.new;
         setSnapshot(newSnap);
         
@@ -70,14 +66,12 @@ export function usePortfolioStream() {
           
           const lastPoint = currentData[currentData.length - 1];
 
-          // Якщо секунда та сама, оновлюємо існуючу точку (графік підтримує оновлення поточного часу)
           if (lastPoint.time === newTimeSec) {
             const updatedData = [...currentData];
             updatedData[updatedData.length - 1] = { time: newTimeSec, value: Number(newSnap.total_equity) };
             return updatedData;
           }
 
-          // Якщо час пізніший, додаємо нову точку
           if (newTimeSec > lastPoint.time) {
             return [
               ...currentData,
@@ -85,15 +79,14 @@ export function usePortfolioStream() {
             ];
           }
 
-          // Якщо прийшли старі дані (out-of-order), ігноруємо їх щоб не зламати графік
           return currentData;
         });
-      })
-      .subscribe();
+      }
+    ).subscribe();
 
     return () => {
       isMounted = false;
-      supabase.removeChannel(subscription);
+      supabase.removeChannel(channel);
     };
   }, []);
 

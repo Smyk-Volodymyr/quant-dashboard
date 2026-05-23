@@ -15,7 +15,19 @@ import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 export default function DashboardPage() {
   const { snapshot, chartData, analytics, isPortfolioLoading } = usePortfolioStream();
   const { sysState, isStateLoading } = useSystemState();
-  const { trades, metrics, isTradesLoading } = useTradeStream();
+  const {
+    trades,
+    metrics,
+    isLoading: isTradesLoading,
+    totalCount,
+    isFetchingNextPage,
+    hasMore,
+    loadMore,
+    filterSymbol,
+    setFilterSymbol,
+    filterProfit,
+    setFilterProfit
+  } = useTradeStream();
 
   if (isStateLoading || isPortfolioLoading) {
     return (
@@ -70,7 +82,18 @@ export default function DashboardPage() {
 
           <div className="flex-1 min-h-0 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden relative">
             <WidgetErrorBoundary widgetName="Recent Trades">
-              <RecentTradesTable trades={trades} />
+              <RecentTradesTable
+                trades={trades}
+                totalCount={totalCount}
+                isLoading={isTradesLoading}
+                isFetchingNextPage={isFetchingNextPage}
+                hasMore={hasMore}
+                loadMore={loadMore}
+                filterSymbol={filterSymbol}
+                setFilterSymbol={setFilterSymbol}
+                filterProfit={filterProfit}
+                setFilterProfit={setFilterProfit}
+              />
             </WidgetErrorBoundary>
           </div>
 

@@ -1,38 +1,47 @@
 "use server";
 
-import { z } from "zod";
-import { createSession } from "@/lib/auth/session";
+import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
-const loginSchema = z.object({
-  username: z.string().min(1, "Введіть логін"),
-  password: z.string().min(1, "Введіть пароль"),
-});
+export async function loginAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+  const supabase = await createClient();
 
-export type AuthState = {
-  error?: string;
-  success?: boolean;
-};
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-export async function loginAction(
-  prevState: AuthState | undefined,
-  formData: FormData
-): Promise<AuthState> {
-  const parsed = loginSchema.safeParse(Object.fromEntries(formData));
-
-  if (!parsed.success) {
-    return { error: "Некоректні дані" };
+  if (error) {
+    return { error: error.message };
   }
 
-  const { username, password } = parsed.data;
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
+}
 
-  if (
-    username === process.env.ADMIN_USERNAME &&
-    password === process.env.ADMIN_PASSWORD
-  ) {
-    await createSession(username);
-    redirect("/");
+export async function signupAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+  const supabase = await createClient();
+
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+  });
+
+  if (error) {
+    return { error: error.message };
   }
 
-  return { error: "Невірний логін або пароль" };
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
+}
+
+export async function signOutAction() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
 }

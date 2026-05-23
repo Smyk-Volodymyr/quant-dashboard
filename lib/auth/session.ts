@@ -8,11 +8,11 @@ if (!secretKey) {
   throw new Error("AUTH_SECRET is not defined in .env");
 }
 
-export async function encrypt(payload: any) {
+export async function encrypt(payload: Record<string, unknown>) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d") // Сесія на 7 днів
+    .setExpirationTime("7d") 
     .sign(encodedKey);
 }
 
@@ -43,7 +43,6 @@ export async function createSession(userId: string) {
 }
 
 export async function deleteSession() {
-  // Очікуємо на Promise перед викликом .delete()
   const cookieStore = await cookies();
   cookieStore.delete("admin_session");
 }

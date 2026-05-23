@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { Trade } from "./RecentTradesTable"; // Шлях до твого файлу з типами
+import { Trade } from "@/hooks/useTradeStream";
 import { X, Target, Clock, ArrowRight, Activity, Zap } from "lucide-react";
 
 interface TradeDrawerProps {
@@ -11,7 +11,6 @@ interface TradeDrawerProps {
 }
 
 export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose }) => {
-  // Закриття по Esc (Accessibility)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) onClose();
@@ -20,13 +19,11 @@ export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Якщо модалка закрита, не рендеримо її взагалі
   if (!isOpen || !trade) return null;
 
   const isProfit = trade.pnl_usdt >= 0;
 
   return (
-    // Backdrop (Темний фон з блюром)
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300"
@@ -127,7 +124,6 @@ export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose
   );
 };
 
-// Міні-компонент для повторюваних карток
 function DetailCard({ label, value, subValue }: { label: string, value: string, subValue: string }) {
   return (
     <div className="bg-[#000000]/30 border border-white/5 rounded-xl p-4 flex flex-col">

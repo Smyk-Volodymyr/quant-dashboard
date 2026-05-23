@@ -1,80 +1,100 @@
 "use server";
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) return String(error.message);
+  return String(error);
+}
+
+async function getSecureClient() {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  
+  if (authError || !user) {
+    throw new Error("Неавторизований доступ. Будь ласка, увійдіть у систему.");
+  }
+  
+  return { supabase, userId: user.id };
+}
 
 export async function updateRecoveryBaselineAction(newBalance: number) {
   try {
-    const { error } = await supabaseAdmin
-      .from("system_state")
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
       .update({ starting_balance: newBalance })
-      .eq("id", 1);
+      .eq("user_id", userId);
 
     if (error) throw error;
     
     revalidatePath("/");
     return { success: true };
-  } catch (err: any) {
-    console.error("Помилка БД:", err);
-    return { error: err.message };
+  } catch (err: unknown) {
+    console.error("DEBUG [updateRecoveryBaselineAction]:", err);
+    return { error: getErrorMessage(err) };
   }
 }
 
 export async function updateWhitelistAction(newWhitelist: string[]) {
   try {
-    const { error } = await supabaseAdmin
-      .from("system_state")
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
       .update({ current_dynamic_whitelist: newWhitelist })
-      .eq("id", 1);
+      .eq("user_id", userId);
 
     if (error) throw error;
     
     revalidatePath("/");
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Помилка БД при оновленні whitelist:", err);
-    return { error: err.message };
+    return { error: getErrorMessage(err) };
   }
 }
 
 export async function toggleEngineAction(newState: boolean) {
   try {
-    const { error } = await supabaseAdmin
-      .from("system_state")
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
       .update({ is_running: newState })
-      .eq("id", 1);
+      .eq("user_id", userId);
 
     if (error) throw error;
     
     revalidatePath("/dashboard");
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Помилка БД [Toggle Engine]:", err);
-    return { error: err.message };
+    return { error: getErrorMessage(err) };
   }
 }
 
 export async function triggerKillSwitchAction() {
   try {
-    const { error } = await supabaseAdmin
-      .from("system_state")
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
       .update({ 
         kill_switch_active: true, 
         is_running: false 
       })
-      .eq("id", 1);
+      .eq("user_id", userId);
 
     if (error) throw error;
     
     revalidatePath("/dashboard");
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Помилка БД [Kill-Switch]:", err);
-    return { error: err.message };
+    return { error: getErrorMessage(err) };
   }
 }

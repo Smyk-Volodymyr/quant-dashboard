@@ -36,10 +36,10 @@ export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ current
   });
 
   useEffect(() => {
-    if (currentBalance !== undefined) {
+    if (currentBalance !== undefined && !isDirty) {
       reset({ startingBalance: currentBalance }, { keepDirty: false });
     }
-  }, [currentBalance, reset]);
+  }, [currentBalance, reset, isDirty]);
 
   const onSubmit = async (data: RecoveryForm) => {
     try {

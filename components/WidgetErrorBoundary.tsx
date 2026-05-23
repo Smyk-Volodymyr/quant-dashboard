@@ -5,7 +5,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props {
   children: ReactNode;
-  widgetName: string; // Назва віджета для логів і UI (напр. "Equity Chart")
+  widgetName: string;
 }
 
 interface State {
@@ -19,24 +19,20 @@ export class WidgetErrorBoundary extends Component<Props, State> {
     this.state = { hasError: false, errorMessage: "" };
   }
 
-  // Цей метод перехоплює помилку під час рендеру дочірніх компонентів
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, errorMessage: error.message };
   }
 
-  // Тут ми можемо відправити лог у Sentry або Datadog
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error(`[Widget Error: ${this.props.widgetName}]`, error, errorInfo);
   }
 
-  // Функція для скидання стану помилки (пробуємо відрендерити знову)
   handleReset = () => {
     this.setState({ hasError: false, errorMessage: "" });
   };
 
   render() {
     if (this.state.hasError) {
-      // Fallback UI
       return (
         <div
           role="alert"
@@ -67,7 +63,6 @@ export class WidgetErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Якщо помилок немає, рендеримо дочірній віджет
     return this.props.children;
   }
 }

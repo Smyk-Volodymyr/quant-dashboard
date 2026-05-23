@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
-import { playTerminalSound } from "@/lib/audio"; // Імпортуємо наш аудіо-модуль
+import { playTerminalSound } from "@/lib/audio";
 
-// Якщо ти ще не виніс типи в окремий файл, можна залишити їх тут або імпортувати
 export interface Trade {
   id: string;
+  user_id: string; 
   symbol: string;
   direction: 'LONG' | 'SHORT';
   entry_price: number;
@@ -21,67 +20,108 @@ export interface Trade {
 }
 
 export function useTradeStream() {
+  const [filterSymbol, setFilterSymbol] = useState<string>('ALL');
+  const [filterProfit, setFilterProfit] = useState<'ALL' | 'PROFIT' | 'LOSS'>('ALL');
+  
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
+  const pageSize = 50;
   const supabase = createClient();
 
-  // 1. Завантаження початкових даних та підписка на оновлення
+  useEffect(() => {
+    setTrades([]);
+    setPage(1);
+    setHasMore(true);
+    setIsLoading(true);
+  }, [filterSymbol, filterProfit]);
+
   useEffect(() => {
     let isMounted = true;
 
     async function fetchTrades() {
+      if (page > 1) setIsFetchingNextPage(true);
+      
       try {
-        // Отримуємо останні 50 угод при першому завантаженні
-        const { data, error } = await supabase
+        let query = supabase
           .from("trades")
-          .select("*")
-          .order("exit_time", { ascending: false })
-          .limit(50);
+          .select("*", { count: "exact" })
+          .order("exit_time", { ascending: false });
+
+        if (filterSymbol !== 'ALL') query = query.eq('symbol', filterSymbol);
+        if (filterProfit === 'PROFIT') query = query.gt('pnl_usdt', 0);
+        else if (filterProfit === 'LOSS') query = query.lte('pnl_usdt', 0);
+
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+        query = query.range(from, to);
+
+        const { data, count, error } = await query;
 
         if (error) throw error;
-        
-        if (isMounted && data) {
-          setTrades(data as Trade[]);
+
+        if (isMounted) {
+          const fetchedTrades = data as Trade[] || [];
+          
+          setTrades(prev => page === 1 ? fetchedTrades : [...prev, ...fetchedTrades]);
+          if (count !== null) setTotalCount(count);
+          setHasMore(fetchedTrades.length === pageSize);
         }
       } catch (err) {
         console.error("Помилка завантаження угод:", err);
-        toast.error("Помилка даних", { description: "Не вдалося завантажити історію торгів." });
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+          setIsFetchingNextPage(false);
+        }
       }
     }
 
     fetchTrades();
 
-    // Підписуємося на нові угоди (INSERT)
-    const subscription = supabase
-      .channel("trades_channel")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "trades" }, (payload) => {
+    return () => { isMounted = false; };
+  }, [page, filterSymbol, filterProfit]);
+
+  const loadMore = useCallback(() => {
+    if (!isFetchingNextPage && hasMore) {
+      setPage(p => p + 1);
+    }
+  }, [isFetchingNextPage, hasMore]);
+
+  useEffect(() => {
+    const channelName = `trades_channel_${crypto.randomUUID()}`;
+    const channel = supabase.channel(channelName);
+
+    channel.on(
+      "postgres_changes", 
+      { event: "INSERT", schema: "public", table: "trades" }, 
+      (payload) => {
         const newTrade = payload.new as Trade;
-        
-        // Оновлюємо стан, додаючи нову угоду на початок списку і зберігаючи лише 50 останніх
-        setTrades((current) => [newTrade, ...current].slice(0, 50));
 
-        // Озвучуємо та показуємо сповіщення
-        if (newTrade.pnl_usdt > 0) {
-          playTerminalSound('profit'); // <--- Звук прибутку
-          toast.success(`Trade Closed: ${newTrade.symbol}`, {
-            description: `Profit: +$${Number(newTrade.pnl_usdt).toFixed(2)} 🚀`,
-          });
-        } else {
-          playTerminalSound('loss'); // <--- Звук збитку
-          toast.error(`Trade Closed: ${newTrade.symbol}`, {
-            description: `Loss: -$${Math.abs(newTrade.pnl_usdt).toFixed(2)} 🛡️`,
-          });
+        if (newTrade.pnl_usdt > 0) playTerminalSound('profit');
+        else playTerminalSound('loss');
+
+        const matchesSymbol = filterSymbol === 'ALL' || newTrade.symbol === filterSymbol;
+        const matchesProfit = filterProfit === 'ALL' || 
+          (filterProfit === 'PROFIT' && newTrade.pnl_usdt > 0) || 
+          (filterProfit === 'LOSS' && newTrade.pnl_usdt <= 0);
+
+        if (matchesSymbol && matchesProfit) {
+          setTrades(prev => [newTrade, ...prev]);
+          setTotalCount(prev => prev + 1);
         }
-      })
-      .subscribe();
+      }
+    ).subscribe();
 
-    return () => {
-      isMounted = false;
-      supabase.removeChannel(subscription);
+    return () => { 
+      supabase.removeChannel(channel); 
     };
-  }, []);
+  }, [filterSymbol, filterProfit]);
 
   const metrics = useMemo(() => {
     const wins = trades.filter(t => t.pnl_usdt > 0).length;
@@ -95,5 +135,8 @@ export function useTradeStream() {
     return { winRate, todayPnl };
   }, [trades]);
 
-  return { trades, metrics, isTradesLoading: isLoading };
+  return { 
+    trades, metrics, totalCount, isLoading, isFetchingNextPage, hasMore, loadMore,
+    filterSymbol, setFilterSymbol, filterProfit, setFilterProfit
+  };
 }

@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import { ListPlus, Trash2, Plus, Server } from "lucide-react";
 import { updateWhitelistAction } from "@/app/actions/system";
 
-// Строга валідація формату торгової пари (напр. BTC/USDT, 1INCH/USDT)
 const addPairSchema = z.object({
   symbol: z.string()
     .min(1, "Поле не може бути порожнім")
@@ -23,11 +22,9 @@ interface WhitelistManagerProps {
 }
 
 export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ currentWhitelist = [] }) => {
-  // Локальний стан для Оптимістичного UI
   const [localList, setLocalList] = useState<string[]>(currentWhitelist);
   const [isMutating, setIsMutating] = useState(false);
 
-  // Синхронізація з Realtime оновленнями від хука useSystemState
   useEffect(() => {
     setLocalList(currentWhitelist);
   }, [currentWhitelist]);
@@ -43,17 +40,14 @@ export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ current
 
   const syncWithServer = async (newList: string[], successMsg: string) => {
     setIsMutating(true);
-    // 1. Оптимістичне оновлення UI
     setLocalList(newList);
 
     try {
-      // 2. Відправка на сервер
       const result = await updateWhitelistAction(newList);
       if (result?.error) throw new Error(result.error);
 
       toast.success("Систему оновлено", { description: successMsg });
     } catch (err: any) {
-      // 3. Відкат у разі помилки (Rollback)
       setLocalList(currentWhitelist);
       toast.error("Помилка синхронізації", { description: err.message || "Не вдалося зберегти Whitelist." });
     } finally {
@@ -62,7 +56,6 @@ export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ current
   };
 
   const onAddPair = async (data: AddPairForm) => {
-    // Дедуплікація
     if (localList.includes(data.symbol)) {
       toast.error("Дублікат", { description: `Пара ${data.symbol} вже є в активному списку.` });
       return;
@@ -70,7 +63,7 @@ export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ current
 
     const newList = [...localList, data.symbol];
     await syncWithServer(newList, `Пару ${data.symbol} додано до роботи.`);
-    reset(); // Очищаємо інпут
+    reset();
   };
 
   const onRemovePair = async (symbolToRemove: string) => {

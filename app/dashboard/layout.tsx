@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, Settings, ListPlus, TerminalSquare, LogOut } from "lucide-react";
+import { Activity, Settings, TerminalSquare, LogOut } from "lucide-react";
 import { useTerminalHotkeys } from "@/hooks/useTerminalHotkeys";
 import { createClient } from "@/lib/supabase/client";
 

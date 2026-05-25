@@ -1,0 +1,3629 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/
+  actions/
+    auth.ts
+    exchange.ts
+    system.ts
+  api/
+    webhooks/
+      telegram/
+        route.ts
+  dashboard/
+    settings/
+      page.tsx
+    layout.tsx
+    page.tsx
+  login/
+    components/
+      ExchangeConnectionForm.tsx
+      LoginForm.tsx
+    page.tsx
+  favicon.ico
+  globals.css
+  layout.tsx
+  page.tsx
+components/
+  ui/
+    badge.tsx
+    button.tsx
+    card.tsx
+    ResizeHandle.tsx
+    skeleton.tsx
+    sonner.tsx
+    table.tsx
+  BotRecoveryPanel.tsx
+  DashboardSkeletons.tsx
+  EquityChart.tsx
+  ManualOverridesPanel.tsx
+  PingIndicator.tsx
+  RecentTradesTable.tsx
+  TradeDrawer.tsx
+  WhitelistManager.tsx
+  WidgetErrorBoundary.tsx
+hooks/
+  useEngineControl.ts
+  usePortfolioStream.ts
+  useSystemState.ts
+  useTerminalHotkeys.ts
+  useTradeStream.ts
+lib/
+  auth/
+    session.ts
+  supabase/
+    client.ts
+    server.ts
+  audio.ts
+  crypto.ts
+  utils.ts
+public/
+  sounds/
+    loss.mp3
+    profit.mp3
+    siren.mp3
+  file.svg
+  globe.svg
+  next.svg
+  vercel.svg
+  window.svg
+.gitignore
+AGENTS.md
+CLAUDE.md
+components.json
+eslint.config.mjs
+next.config.ts
+package.json
+postcss.config.mjs
+proxy.ts
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/actions/exchange.ts">
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { encryptString } from "@/lib/crypto";
+import { revalidatePath } from "next/cache";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+export async function connectExchangeAction(formData: FormData) {
+  const apiKey = formData.get("apiKey") as string;
+  const apiSecret = formData.get("apiSecret") as string;
+
+  if (!apiKey || !apiSecret) {
+    return { error: "Ключі не можуть бути порожніми" };
+  }
+
+  const supabase = await createClient();
+  
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  
+  if (authError || !user) {
+    return { error: "Помилка автентифікації. Будь ласка, увійдіть знову." };
+  }
+
+  try {
+    const encryptedKey = encryptString(apiKey);
+    const encryptedSecret = encryptString(apiSecret);
+
+    const { error: dbError } = await supabase
+      .from("user_profiles")
+      .upsert({
+        user_id: user.id,
+        binance_api_key_encrypted: encryptedKey,
+        binance_secret_key_encrypted: encryptedSecret,
+        is_exchange_connected: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+
+    if (dbError) throw dbError;
+
+    revalidatePath("/dashboard/settings");
+    return { success: true };
+  } catch (err: unknown) {
+    console.error("Помилка підключення біржі:", err);
+    return { error: "Внутрішня помилка шифрування або збереження. " + getErrorMessage(err) };
+  }
+}
+</file>
+
+<file path="app/dashboard/settings/page.tsx">
+import { createClient } from "@/lib/supabase/server";
+import { Settings, Send } from "lucide-react";
+import { ExchangeConnectionForm } from "../../login/components/ExchangeConnectionForm";
+
+export default async function SettingsPage() {
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  let isConnected = false;
+  let telegramChatId: string | null = null;
+
+  if (user) {
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("is_exchange_connected, telegram_chat_id")
+      .eq("user_id", user.id)
+      .single();
+
+    isConnected = !!data?.is_exchange_connected;
+    telegramChatId = data?.telegram_chat_id || null;
+  }
+
+  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME || "QuantCore_Bot";
+
+  const telegramLink = user ? `https://t.me/${botUsername}?start=${user.id}` : "#";
+
+  return (
+    <div className="p-4 md:p-6 lg:p-8 max-w-4xl mx-auto w-full flex flex-col gap-8 animate-in fade-in duration-500">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-2xl font-bold tracking-tight text-white flex items-center">
+          <Settings className="mr-3 text-slate-400" size={24} />
+          Workspace Settings
+        </h1>
+        <p className="text-sm text-slate-500 font-mono">
+          Керування підключеннями, сповіщеннями та конфігурацією торгового ядра.
+        </p>
+      </header>
+
+      <section className="grid gap-6 md:grid-cols-2 items-start">
+        {/* ЛІВА КОЛОНКА: Підключення біржі */}
+        <div className="flex flex-col gap-6">
+          <ExchangeConnectionForm isConnected={isConnected} />
+        </div>
+
+        {/* ПРАВА КОЛОНКА */}
+        <div className="flex flex-col gap-6">
+
+          {/* Модуль Telegram Сповіщень */}
+          <article className="p-6 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col gap-4 relative overflow-hidden">
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <Send className="text-blue-400" size={20} />
+              </div>
+              <div>
+                <h2 className="font-mono text-sm tracking-widest text-slate-200 uppercase">Telegram Alerts</h2>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">Сповіщення про відкриті/закриті угоди</p>
+              </div>
+            </div>
+
+            <div className="mt-2 relative z-10">
+              {telegramChatId ? (
+                <div className="w-full py-3 bg-green-500/10 border border-green-500/20 text-green-400 font-mono text-xs uppercase tracking-widest rounded-xl text-center flex items-center justify-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </span>
+                  Підключено (ID: {telegramChatId})
+                </div>
+              ) : (
+                <a
+                  href={telegramLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs uppercase tracking-widest rounded-xl text-center transition-all shadow-[0_0_15px_rgba(37,99,235,0.2)] flex items-center justify-center gap-2 group"
+                >
+                  <Send size={14} className="group-hover:-translate-y-1 group-hover:translate-x-1 transition-transform" />
+                  ПІДКЛЮЧИТИ ТЕЛЕГРАМ БОТА
+                </a>
+              )}
+            </div>
+
+            <p className="text-[10px] text-slate-600 font-mono text-center relative z-10">
+              Бот буде надсилати сигнали виключно щодо вашого портфеля.
+            </p>
+          </article>
+
+          {/* Модуль Білінгу (Заглушка) */}
+          <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center opacity-50">
+            <p className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-2">Billing & Subscription</p>
+            <p className="text-[10px] text-slate-600 font-mono">Модуль оплати (Success Fee) контролюється адміністратором</p>
+          </article>
+
+        </div>
+      </section>
+    </div>
+  );
+}
+</file>
+
+<file path="app/login/components/ExchangeConnectionForm.tsx">
+"use client";
+
+import React, { useState, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { toast } from "sonner";
+import { KeyRound, ShieldCheck, AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react";
+import { connectExchangeAction } from "@/app/actions/exchange";
+
+const exchangeSchema = z.object({
+  apiKey: z.string().min(32, "API Key виглядає занадто коротким"),
+  apiSecret: z.string().min(32, "API Secret виглядає занадто коротким"),
+});
+
+type ExchangeForm = z.infer<typeof exchangeSchema>;
+
+interface Props {
+  isConnected: boolean;
+}
+
+export const ExchangeConnectionForm: React.FC<Props> = ({ isConnected }) => {
+  const [isPending, startTransition] = useTransition();
+  const [isSuccess, setIsSuccess] = useState(isConnected);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<ExchangeForm>({
+    resolver: zodResolver(exchangeSchema),
+  });
+
+  const onSubmit = (data: ExchangeForm) => {
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.append("apiKey", data.apiKey);
+      formData.append("apiSecret", data.apiSecret);
+
+      const result = await connectExchangeAction(formData);
+
+      if (result?.error) {
+        toast.error("Помилка підключення", { description: result.error });
+      } else {
+        setIsSuccess(true);
+        reset();
+        toast.success("Біржу підключено", {
+          description: "Ключі успішно зашифровано та збережено."
+        });
+      }
+    });
+  };
+
+  return (
+    <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col relative overflow-hidden">
+      <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between relative z-10 bg-[#000000]/50">
+        <div className="flex items-center">
+          <ShieldCheck size={18} className="mr-3 text-blue-400" />
+          <div>
+            <h2 className="font-mono text-sm tracking-widest text-slate-200 uppercase">Binance Futures API</h2>
+            <p className="text-[10px] text-slate-500 font-mono mt-0.5">End-to-End Encrypted Storage</p>
+          </div>
+        </div>
+        {isSuccess && (
+          <div className="flex items-center px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
+            <CheckCircle2 size={12} className="text-green-500 mr-1.5" />
+            <span className="text-[10px] font-mono text-green-500 uppercase tracking-widest">Connected</span>
+          </div>
+        )}
+      </div>
+
+      <div className="p-6 relative z-10">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+          <div className="p-4 bg-yellow-500/5 border border-yellow-500/10 rounded-xl flex gap-3">
+            <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
+            <div className="text-xs text-slate-400 font-mono leading-relaxed">
+              Переконайтеся, що ви увімкнули <span className="text-slate-200 font-bold">Enable Futures</span> для ваших ключів.
+              Забороніть <span className="text-slate-200 font-bold">Enable Withdrawals</span>. Ключі зберігаються у зашифрованому вигляді (AES-256-GCM) і ніколи не передаються на клієнт.
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest ml-1">API Key</label>
+              <div className="relative">
+                <input
+                  type="password"
+                  placeholder="Введіть Binance API Key"
+                  className={`w-full bg-[#000000]/50 border px-4 py-3 pl-10 rounded-xl text-slate-200 font-mono text-sm placeholder:text-slate-700 focus:ring-1 focus:outline-none transition-all ${errors.apiKey ? "border-red-500/50 focus:ring-red-500/50" : "border-white/5 focus:ring-blue-500/50 hover:border-white/10"
+                    }`}
+                  {...register("apiKey")}
+                  disabled={isPending}
+                />
+                <KeyRound size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
+              </div>
+              {errors.apiKey && <span className="text-xs text-red-400 ml-1 font-mono">{errors.apiKey.message}</span>}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest ml-1">Secret Key</label>
+              <div className="relative">
+                <input
+                  type="password"
+                  placeholder="Введіть Binance Secret Key"
+                  className={`w-full bg-[#000000]/50 border px-4 py-3 pl-10 rounded-xl text-slate-200 font-mono text-sm placeholder:text-slate-700 focus:ring-1 focus:outline-none transition-all ${errors.apiSecret ? "border-red-500/50 focus:ring-red-500/50" : "border-white/5 focus:ring-blue-500/50 hover:border-white/10"
+                    }`}
+                  {...register("apiSecret")}
+                  disabled={isPending}
+                />
+                <KeyRound size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
+              </div>
+              {errors.apiSecret && <span className="text-xs text-red-400 ml-1 font-mono">{errors.apiSecret.message}</span>}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isPending}
+            className="w-full mt-4 py-3 bg-white/5 border border-white/10 text-slate-200 font-mono text-xs uppercase tracking-widest rounded-xl hover:bg-white/10 hover:text-white focus:ring-2 focus:ring-white/20 disabled:opacity-50 transition-all flex items-center justify-center group"
+          >
+            {isPending ? (
+              <span className="animate-pulse">ENCRYPTING & SAVING...</span>
+            ) : (
+              <>
+                {isSuccess ? "UPDATE KEYS" : "CONNECT EXCHANGE"}
+                <ArrowRight size={14} className="ml-2 group-hover:translate-x-1 transition-transform" />
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+    </article>
+  );
+};
+</file>
+
+<file path="components/ui/badge.tsx">
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
+
+import { cn } from "@/lib/utils"
+
+const badgeVariants = cva(
+  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        secondary:
+          "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
+        destructive:
+          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+        outline:
+          "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
+        ghost:
+          "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+function Badge({
+  className,
+  variant = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : "span"
+
+  return (
+    <Comp
+      data-slot="badge"
+      data-variant={variant}
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
+  )
+}
+
+export { Badge, badgeVariants }
+</file>
+
+<file path="components/ui/button.tsx">
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
+
+import { cn } from "@/lib/utils"
+
+const buttonVariants = cva(
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        outline:
+          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+        ghost:
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        destructive:
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default:
+          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
+        icon: "size-8",
+        "icon-xs":
+          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm":
+          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
+        "icon-lg": "size-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot.Root : "button"
+
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+</file>
+
+<file path="components/ui/card.tsx">
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Card({
+  className,
+  size = "default",
+  ...props
+}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+  return (
+    <div
+      data-slot="card"
+      data-size={size}
+      className={cn(
+        "group/card flex flex-col gap-4 overflow-hidden rounded-xl bg-card py-4 text-sm text-card-foreground ring-1 ring-foreground/10 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-header"
+      className={cn(
+        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-4 group-data-[size=sm]/card:px-3 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-title"
+      className={cn(
+        "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn(
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-content"
+      className={cn("px-4 group-data-[size=sm]/card:px-3", className)}
+      {...props}
+    />
+  )
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn(
+        "flex items-center rounded-b-xl border-t bg-muted/50 p-4 group-data-[size=sm]/card:p-3",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+}
+</file>
+
+<file path="components/ui/skeleton.tsx">
+import { cn } from "@/lib/utils"
+
+function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="skeleton"
+      className={cn("animate-pulse rounded-md bg-muted", className)}
+      {...props}
+    />
+  )
+}
+
+export { Skeleton }
+</file>
+
+<file path="components/ui/sonner.tsx">
+"use client"
+
+import { useTheme } from "next-themes"
+import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+
+const Toaster = ({ ...props }: ToasterProps) => {
+  const { theme = "system" } = useTheme()
+
+  return (
+    <Sonner
+      theme={theme as ToasterProps["theme"]}
+      className="toaster group"
+      icons={{
+        success: (
+          <CircleCheckIcon className="size-4" />
+        ),
+        info: (
+          <InfoIcon className="size-4" />
+        ),
+        warning: (
+          <TriangleAlertIcon className="size-4" />
+        ),
+        error: (
+          <OctagonXIcon className="size-4" />
+        ),
+        loading: (
+          <Loader2Icon className="size-4 animate-spin" />
+        ),
+      }}
+      style={
+        {
+          "--normal-bg": "var(--popover)",
+          "--normal-text": "var(--popover-foreground)",
+          "--normal-border": "var(--border)",
+          "--border-radius": "var(--radius)",
+        } as React.CSSProperties
+      }
+      toastOptions={{
+        classNames: {
+          toast: "cn-toast",
+        },
+      }}
+      {...props}
+    />
+  )
+}
+
+export { Toaster }
+</file>
+
+<file path="components/ui/table.tsx">
+"use client"
+
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Table({ className, ...props }: React.ComponentProps<"table">) {
+  return (
+    <div
+      data-slot="table-container"
+      className="relative w-full overflow-x-auto"
+    >
+      <table
+        data-slot="table"
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props}
+      />
+    </div>
+  )
+}
+
+function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+  return (
+    <thead
+      data-slot="table-header"
+      className={cn("[&_tr]:border-b", className)}
+      {...props}
+    />
+  )
+}
+
+function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+  return (
+    <tbody
+      data-slot="table-body"
+      className={cn("[&_tr:last-child]:border-0", className)}
+      {...props}
+    />
+  )
+}
+
+function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
+  return (
+    <tfoot
+      data-slot="table-footer"
+      className={cn(
+        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+  return (
+    <tr
+      data-slot="table-row"
+      className={cn(
+        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+  return (
+    <th
+      data-slot="table-head"
+      className={cn(
+        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+  return (
+    <td
+      data-slot="table-cell"
+      className={cn(
+        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableCaption({
+  className,
+  ...props
+}: React.ComponentProps<"caption">) {
+  return (
+    <caption
+      data-slot="table-caption"
+      className={cn("mt-4 text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+}
+</file>
+
+<file path="lib/supabase/client.ts">
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+</file>
+
+<file path="lib/supabase/server.ts">
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+          }
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: '', ...options });
+          } catch (error) {
+          }
+        },
+      },
+    }
+  );
+}
+</file>
+
+<file path="lib/audio.ts">
+"use client";
+
+type SoundType = 'profit' | 'loss' | 'siren';
+
+export const playTerminalSound = (type: SoundType) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const audio = new Audio(`/sounds/${type}.mp3`);
+    audio.volume = type === 'siren' ? 0.8 : 0.5;
+    
+    audio.play().catch(e => console.warn("Audio autoplay prevented by browser:", e));
+  } catch (error) {
+    console.error("Failed to play sound:", error);
+  }
+};
+</file>
+
+<file path="lib/crypto.ts">
+import crypto from "crypto";
+
+const ENCRYPTION_KEY = process.env.ENCRYPTION_SECRET;
+const ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 16;
+
+export function encryptString(text: string): string {
+  if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
+    throw new Error("Invalid ENCRYPTION_SECRET length. Must be 32 characters.");
+  }
+
+  const iv = crypto.randomBytes(IV_LENGTH);
+  
+  const cipher = crypto.createCipheriv(
+    ALGORITHM,
+    Buffer.from(ENCRYPTION_KEY),
+    iv
+  );
+
+  let encrypted = cipher.update(text, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  
+  const authTag = cipher.getAuthTag().toString("hex");
+
+  return `${iv.toString("hex")}:${authTag}:${encrypted}`;
+}
+</file>
+
+<file path="lib/utils.ts">
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+</file>
+
+<file path="public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
+<file path="AGENTS.md">
+<!-- BEGIN:nextjs-agent-rules -->
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+<!-- END:nextjs-agent-rules -->
+</file>
+
+<file path="CLAUDE.md">
+@AGENTS.md
+</file>
+
+<file path="components.json">
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "radix-nova",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "app/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "rtl": false,
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "registries": {}
+}
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+</file>
+
+<file path="postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+</file>
+
+<file path="app/api/webhooks/telegram/route.ts">
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+export async function POST(req: Request) {
+  try {
+    // 💡 ПЕРЕНЕСЕНО СЮДИ: Тепер клієнт створюється лише під час реального запиту
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!
+    );
+
+    const body = await req.json();
+
+    if (!body.message || !body.message.text) {
+      return NextResponse.json({ status: 'ignored' });
+    }
+
+    const { text, chat } = body.message;
+    const chatId = chat.id.toString();
+
+    if (text.startsWith('/start ')) {
+      const userId = text.split(' ')[1];
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      if (uuidRegex.test(userId)) {
+        const { error } = await supabaseAdmin
+          .from('user_profiles')
+          .update({ telegram_chat_id: chatId })
+          .eq('user_id', userId);
+
+        if (error) {
+          console.error('Помилка оновлення БД:', error);
+          await sendTelegramMessage(chatId, "❌ Помилка прив'язки акаунта. Зверніться до підтримки.");
+        } else {
+          await sendTelegramMessage(chatId, "✅ Акаунт успішно прив'язано! Тепер ви будете отримувати сповіщення про свої угоди сюди.");
+        }
+      }
+    }
+
+    return NextResponse.json({ status: 'ok' });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+async function sendTelegramMessage(chatId: string, text: string) {
+  const token = process.env.TELEGRAM_TOKEN;
+  if (!token) return;
+
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+}
+</file>
+
+<file path="app/login/page.tsx">
+import { LoginForm } from "./components/LoginForm";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "System Auth | Quant Bot",
+};
+
+export default function LoginPage() {
+  return (
+    <main className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/10 via-[#050505] to-[#050505] pointer-events-none" />
+
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
+
+      <div className="relative z-10 w-full flex justify-center">
+        <LoginForm />
+      </div>
+
+      <div className="absolute bottom-6 text-center z-10">
+        <p className="text-[10px] font-mono text-slate-600 tracking-widest uppercase">
+          Secure Connection Established
+        </p>
+      </div>
+    </main>
+  );
+}
+</file>
+
+<file path="app/globals.css">
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+</file>
+
+<file path="components/ui/ResizeHandle.tsx">
+import React from "react";
+import { Separator } from "react-resizable-panels";
+
+interface ResizeHandleProps {
+  direction?: "horizontal" | "vertical";
+  className?: string;
+}
+
+export function ResizeHandle({ direction = "horizontal", className = "" }: ResizeHandleProps) {
+  const isHorizontal = direction === "horizontal";
+
+  return (
+    <Separator
+      className={`group flex items-center justify-center bg-[#09090b] outline-none transition-colors hover:bg-slate-800/50 focus-visible:ring-1 focus-visible:ring-blue-500 ${isHorizontal ? "w-2 cursor-col-resize" : "h-2 cursor-row-resize"
+        } ${className}`}
+    >
+      <div
+        className={`bg-slate-700 rounded-full transition-colors group-hover:bg-blue-500 ${isHorizontal ? "w-1 h-8" : "h-1 w-8"
+          }`}
+      />
+    </Separator>
+  );
+}
+</file>
+
+<file path="components/DashboardSkeletons.tsx">
+"use client";
+
+import React from "react";
+
+const SkeletonBase = ({ className = "", style }: { className?: string, style?: React.CSSProperties }) => (
+  <div className={`animate-pulse rounded bg-slate-800 ${className}`} style={style} />
+);
+
+export const KPICardSkeleton = () => (
+  <article className="bg-[#09090b] border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col gap-4 h-32.5">
+    <div className="flex items-center justify-between">
+      <SkeletonBase className="h-4 w-32 bg-slate-800/70" />
+      <SkeletonBase className="h-5 w-5 rounded-full bg-slate-800/70" />
+    </div>
+    <SkeletonBase className="h-10 w-48 bg-slate-700" />
+    <SkeletonBase className="h-3 w-40 bg-slate-800/70 mt-1" />
+  </article>
+);
+
+export const ChartSkeleton = () => (
+  <div className="relative p-4 flex flex-col h-full gap-4">
+    <div className="flex justify-between items-center mb-2 shrink-0">
+      <SkeletonBase className="h-5 w-40 bg-slate-700" />
+      <SkeletonBase className="h-5 w-20 rounded-full bg-slate-800" />
+    </div>
+    <div className="flex-1 w-full relative flex">
+      <div className="w-10 h-full flex flex-col justify-between py-2 border-r border-slate-800 pr-2">
+        {[...Array(5)].map((_, i) => <SkeletonBase key={i} className="h-3 w-6" />)}
+      </div>
+      <div className="flex-1 h-full p-4 flex flex-col justify-center gap-10">
+        <SkeletonBase className="h-1 w-full opacity-60" />
+        <SkeletonBase className="h-1 w-full" />
+        <SkeletonBase className="h-1 w-full opacity-60" />
+      </div>
+    </div>
+  </div>
+);
+
+export const TableSkeleton = () => (
+  <div className="w-full flex flex-col h-full bg-[#09090b] text-sm outline-none">
+    <div className="flex border-b border-slate-800 p-4 gap-4 bg-slate-900/40">
+      {[20, 20, 15, 25, 20].map((width, i) => (
+        <SkeletonBase key={i} style={{ width: `${width}%` }} className="h-4 bg-slate-700" />
+      ))}
+    </div>
+    {[...Array(6)].map((_, rowIndex) => (
+      <div key={rowIndex} className="flex border-b border-slate-800/50 p-4 gap-4 items-center">
+        {[20, 20, 15, 25, 20].map((width, colIndex) => (
+          <SkeletonBase
+            key={colIndex}
+            style={{ width: `${width}%` }}
+            className={`h-5 ${colIndex === 2 ? 'rounded-full h-6 w-12' : 'bg-slate-800/60'}`}
+          />
+        ))}
+      </div>
+    ))}
+  </div>
+);
+
+export const ControlsSkeleton = () => (
+  <aside className="p-4 flex flex-col gap-8 h-full">
+    <div>
+      <SkeletonBase className="h-5 w-40 bg-slate-700 mb-4" />
+      <div className="flex flex-wrap gap-2">
+        {[...Array(6)].map((_, i) => <SkeletonBase key={i} className="h-6 w-16 border border-slate-700 bg-slate-800/80" />)}
+      </div>
+    </div>
+    <div className="border border-slate-800 rounded-xl p-6 bg-[#09090b] flex flex-col gap-4">
+      <SkeletonBase className="h-5 w-32 bg-slate-700" />
+      <SkeletonBase className="h-10 w-full rounded-lg mt-4 bg-slate-800" />
+      <SkeletonBase className="h-10 w-full rounded-lg bg-slate-800" />
+    </div>
+    <div className="border border-slate-800 rounded-xl p-6 bg-[#09090b] flex flex-col gap-4">
+      <SkeletonBase className="h-5 w-32 bg-slate-700" />
+      <SkeletonBase className="h-10 w-full rounded-lg mt-4 bg-slate-800" />
+      <SkeletonBase className="h-10 w-full rounded-lg bg-red-950 border border-red-900" />
+    </div>
+  </aside>
+);
+
+export const DashboardSkeletonLayout = () => (
+  <div className="flex h-screen bg-[#09090b] text-slate-50 font-sans overflow-hidden">
+
+    <aside className="w-64 border-r border-slate-800 bg-[#09090b] flex-col hidden md:flex animate-pulse">
+      <div className="h-16 border-b border-slate-800 p-6 flex items-center gap-2">
+        <SkeletonBase className="h-5 w-5 rounded-full bg-slate-700" />
+        <SkeletonBase className="h-5 w-32 bg-slate-700" />
+      </div>
+      <div className="p-6 space-y-4">
+        {[...Array(3)].map((_, i) => <SkeletonBase key={i} className="h-10 w-full rounded-lg bg-slate-800/80" />)}
+      </div>
+    </aside>
+
+    <main className="flex-1 flex flex-col h-screen overflow-hidden">
+      <header className="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-[#09090b]/80 backdrop-blur-sm sticky top-0 z-10 animate-pulse">
+        <SkeletonBase className="h-6 w-48 bg-slate-700" />
+        <div className="flex items-center space-x-4">
+          <SkeletonBase className="h-7 w-32 rounded-full bg-slate-800" />
+        </div>
+      </header>
+
+      <div className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 gap-6 overflow-hidden">
+
+        <section aria-label="Завантаження показників" className="grid grid-cols-2 lg:grid-cols-6 gap-4 shrink-0">
+          {[...Array(6)].map((_, i) => <KPICardSkeleton key={i} />)}
+        </section>
+
+        <section className="flex-1 min-h-125 border border-slate-800 rounded-xl overflow-hidden shadow-sm bg-[#09090b] flex">
+
+          <div className="w-[75%] border-r border-slate-800 flex flex-col">
+            <div className="h-[60%] border-b border-slate-800">
+              <ChartSkeleton />
+            </div>
+            <div className="h-[40%] bg-slate-900/10 relative">
+              <div className="absolute inset-0">
+                <TableSkeleton />
+              </div>
+            </div>
+          </div>
+
+          <aside className="w-[25%] bg-slate-900/20">
+            <ControlsSkeleton />
+          </aside>
+        </section>
+      </div>
+    </main>
+  </div>
+);
+</file>
+
+<file path="components/ManualOverridesPanel.tsx">
+"use client";
+
+import React, { memo, useState, useEffect } from "react";
+import { useEngineControl } from "@/hooks/useEngineControl";
+import { AlertOctagon, PauseCircle, PlayCircle, ShieldAlert } from "lucide-react";
+
+interface ManualOverridesPanelProps {
+  isRunning: boolean;
+  killSwitchActive: boolean;
+}
+
+export const ManualOverridesPanel: React.FC<ManualOverridesPanelProps> = memo(({ isRunning, killSwitchActive }) => {
+  const { toggleEngine, triggerKillSwitch, isMutating } = useEngineControl();
+  const [confirmKill, setConfirmKill] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (confirmKill) {
+      timer = setTimeout(() => setConfirmKill(false), 3000);
+    }
+    return () => clearTimeout(timer);
+  }, [confirmKill]);
+
+  const handleKillSwitchClick = () => {
+    if (!confirmKill) {
+      setConfirmKill(true);
+    } else {
+      triggerKillSwitch();
+      setConfirmKill(false);
+    }
+  };
+
+  return (
+    <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col relative overflow-hidden">
+      {killSwitchActive && <div className="absolute inset-0 bg-red-900/10 pointer-events-none animate-pulse"></div>}
+
+      <div className="px-5 py-4 border-b border-white/5 flex items-center relative z-10">
+        <ShieldAlert size={16} className="mr-2 text-orange-500" />
+        <h2 className="font-mono text-sm tracking-widest text-slate-200 uppercase">System Overrides</h2>
+      </div>
+
+      <div className="p-5 flex-1 flex flex-col gap-5 relative z-10">
+        <div className="flex items-center justify-between p-4 bg-[#000000]/50 border border-white/5 rounded-xl">
+          <div>
+            <h3 className="text-xs font-mono uppercase text-slate-300">Trading Engine</h3>
+            <p className="text-[10px] text-slate-600 mt-1 uppercase font-mono">
+              {isRunning ? "ACTIVE / EXECUTING" : "HALTED / NO NEW ENTRIES"}
+            </p>
+          </div>
+          <button
+            onClick={() => toggleEngine(isRunning)}
+            disabled={isMutating || killSwitchActive}
+            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${isRunning ? 'bg-green-500/20 border border-green-500/50' : 'bg-white/5 border border-white/10'}`}
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full transition-transform ${isRunning ? 'translate-x-6 bg-green-400 shadow-[0_0_10px_#4ade80]' : 'translate-x-1 bg-slate-500'}`} />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={handleKillSwitchClick}
+            disabled={isMutating || killSwitchActive}
+            className={`w-full py-4 rounded-xl font-mono font-bold text-xs uppercase tracking-widest transition-all border flex items-center justify-center disabled:opacity-50 ${killSwitchActive
+              ? 'bg-red-950/30 text-red-500 border-red-900/50 cursor-not-allowed'
+              : confirmKill
+                ? 'bg-red-600 text-white border-red-500 hover:bg-red-500 shadow-[0_0_20px_rgba(220,38,38,0.4)] animate-pulse'
+                : 'bg-red-500/5 text-red-500 border-red-500/20 hover:bg-red-500/10'
+              }`}
+          >
+            <AlertOctagon className="mr-2" size={16} />
+            {killSwitchActive ? "SYSTEM LOCKED" : confirmKill ? "CONFIRM EMERGENCY STOP" : "FORCE KILL-SWITCH"}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+});
+
+ManualOverridesPanel.displayName = "ManualOverridesPanel";
+</file>
+
+<file path="components/WidgetErrorBoundary.tsx">
+"use client";
+
+import React, { Component, ReactNode, ErrorInfo } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+
+interface Props {
+  children: ReactNode;
+  widgetName: string;
+}
+
+interface State {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+export class WidgetErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false, errorMessage: "" };
+  }
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, errorMessage: error.message };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error(`[Widget Error: ${this.props.widgetName}]`, error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, errorMessage: "" });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="h-full w-full flex flex-col items-center justify-center p-6 bg-[#050505]/80 backdrop-blur-sm border border-red-900/30 rounded-2xl animate-in fade-in"
+        >
+          <div className="h-12 w-12 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center mb-4">
+            <AlertTriangle size={24} className="text-red-500" />
+          </div>
+
+          <h3 className="font-mono text-sm font-bold text-slate-200 uppercase tracking-widest text-center mb-1">
+            {this.props.widgetName} Offline
+          </h3>
+
+          <p className="text-xs text-slate-500 font-mono mb-6 text-center max-w-xs truncate" title={this.state.errorMessage}>
+            Error: {this.state.errorMessage || "Data stream corrupted"}
+          </p>
+
+          <button
+            onClick={this.handleReset}
+            className="flex items-center px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-mono uppercase tracking-widest transition-all focus:ring-2 focus:ring-red-500/40 outline-none group"
+            aria-label={`Перезавантажити віджет ${this.props.widgetName}`}
+          >
+            <RefreshCw size={14} className="mr-2 group-hover:rotate-180 transition-transform duration-500" />
+            Reload Widget
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+</file>
+
+<file path="hooks/useEngineControl.ts">
+import { useState, useCallback } from "react";
+import { toast } from "sonner";
+import { toggleEngineAction, triggerKillSwitchAction } from "@/app/actions/system";
+
+export function useEngineControl() {
+  const [isMutating, setIsMutating] = useState(false);
+
+  const toggleEngine = useCallback(async (newState: boolean) => {
+    setIsMutating(true);
+    try {
+      const result = await toggleEngineAction(newState);
+
+      if (result.error) throw new Error(result.error);
+
+      if (newState) {
+        toast.success("Engine Online", { description: "Бот відновлює пошук точок входу." });
+      } else {
+        toast.warning("Engine Paused", { description: "Нові позиції відкриватися не будуть. Активні угоди супроводжуються." });
+      }
+    } catch (err: any) {
+      console.error("Engine toggle error:", err);
+      toast.error("Помилка синхронізації", { description: err.message || "Не вдалося змінити стан двигуна." });
+    } finally {
+      setIsMutating(false);
+    }
+  }, []);
+
+  const triggerKillSwitch = useCallback(async () => {
+    setIsMutating(true);
+    try {
+      const result = await triggerKillSwitchAction();
+
+      if (result.error) throw new Error(result.error);
+
+      toast.error("🚨 FORCE KILL-SWITCH АКТИВОВАНО", { 
+        description: "Надіслано сигнал на негайне закриття всіх позицій по ринку." 
+      });
+    } catch (err: any) {
+      console.error("Kill-Switch error:", err);
+      toast.error("Критична помилка", { description: err.message || "Не вдалося відправити сигнал Kill-Switch до БД." });
+    } finally {
+      setIsMutating(false);
+    }
+  }, []);
+
+  return { toggleEngine, triggerKillSwitch, isMutating };
+}
+</file>
+
+<file path="hooks/useTerminalHotkeys.ts">
+"use client";
+
+import { useEffect } from "react";
+import { useEngineControl } from "./useEngineControl";
+import { useSystemState } from "./useSystemState";
+import { toast } from "sonner";
+
+export function useTerminalHotkeys() {
+  const { toggleEngine, triggerKillSwitch, isMutating } = useEngineControl();
+  const { sysState } = useSystemState();
+
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+      if (!isCmdOrCtrl) return;
+
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        
+        if (sysState?.kill_switch_active || isMutating) {
+          toast("Система вже заблокована", { description: "Kill-Switch вже активний." });
+          return;
+        }
+
+        toast.error("Executing Emergency Override...");
+        await triggerKillSwitch();
+      }
+
+      if (e.key.toLowerCase() === 'p') {
+        e.preventDefault(); 
+        
+        if (sysState?.kill_switch_active || isMutating) return;
+
+        const currentState = sysState?.is_running ?? false;
+        toast("Manual Override", { 
+          description: currentState ? "Pausing Engine..." : "Starting Engine..." 
+        });
+        
+        await toggleEngine(!currentState);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sysState, toggleEngine, triggerKillSwitch, isMutating]);
+}
+</file>
+
+<file path="lib/auth/session.ts">
+import { SignJWT, jwtVerify } from "jose";
+import { cookies } from "next/headers";
+
+const secretKey = process.env.AUTH_SECRET;
+const encodedKey = new TextEncoder().encode(secretKey);
+
+if (!secretKey) {
+  throw new Error("AUTH_SECRET is not defined in .env");
+}
+
+export async function encrypt(payload: Record<string, unknown>) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d") 
+    .sign(encodedKey);
+}
+
+export async function decrypt(session: string | undefined = "") {
+  try {
+    const { payload } = await jwtVerify(session, encodedKey, {
+      algorithms: ["HS256"],
+    });
+    return payload;
+  } catch (error) {
+    return null;
+  }
+}
+
+export async function createSession(userId: string) {
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const session = await encrypt({ userId, expiresAt });
+
+  const cookieStore = await cookies();
+  
+  cookieStore.set("admin_session", session, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    expires: expiresAt,
+    sameSite: "lax",
+    path: "/",
+  });
+}
+
+export async function deleteSession() {
+  const cookieStore = await cookies();
+  cookieStore.delete("admin_session");
+}
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="README.md">
+# Quant Trading Dashboard
+
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js)
+![Supabase](https://img.shields.io/badge/Supabase-Realtime-47B275?style=for-the-badge&logo=supabase)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)
+![TypeScript](https://img.shields.io/badge/TypeScript-Ready-3178C6?style=for-the-badge&logo=typescript)
+
+Institutional-grade web terminal for real-time monitoring of automated quantitative trading strategies on Binance. 
+
+This repository contains the **Frontend Dashboard** of the Quant Framework. It connects seamlessly to a PostgreSQL database via WebSockets to visualize the performance of a remote Python-based trading engine.
+
+## Key Features
+
+* **⚡ Real-Time Telemetry:** Instantaneous updates of Total Equity, Available Balance, and Daily Drawdown using Supabase Realtime (WebSockets).
+* **Premium Charting:** Interactive, high-performance financial charts powered by TradingView's `lightweight-charts` (v5).
+* **Dynamic Universe Tracking:** Live monitoring of the bot's active trading pairs and sector allocation (e.g., L1, DeFi, AI, Meme).
+* **Risk Management UI:** Visual indicators for Kill-Switch status and system health.
+* **Responsive Design:** Built with Tailwind CSS to look perfect on both multi-monitor desktop setups and mobile devices.
+
+## System Architecture
+
+The complete system consists of three decoupled layers:
+1. **Trading Engine (Backend):** Python asynchronous bot running on a dedicated server, executing trades via Binance WebSocket API.
+2. **Data Warehouse:** Supabase (PostgreSQL) acting as the central nervous system, storing logs and broadcasting state changes.
+3. **Frontend Terminal (This Repo):** Next.js application subscribing to database changes and rendering the UI.
+
+## Getting Started
+
+### Prerequisites
+Make sure you have Node.js (v18+) installed. You also need a Supabase project set up and connected to your Python Trading Bot.
+
+### 1. Clone the repository
+```bash
+git clone [https://github.com/your-username/quant-dashboard.git](https://github.com/your-username/quant-dashboard.git)
+cd quant-dashboard
+</file>
+
+<file path="app/actions/auth.ts">
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+
+export async function loginAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+  const supabase = await createClient();
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
+}
+
+export async function signupAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+  const supabase = await createClient();
+
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
+}
+
+export async function signOutAction() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
+}
+</file>
+
+<file path="app/actions/system.ts">
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) return String(error.message);
+  return String(error);
+}
+
+async function getSecureClient() {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  
+  if (authError || !user) {
+    throw new Error("Неавторизований доступ. Будь ласка, увійдіть у систему.");
+  }
+  
+  return { supabase, userId: user.id };
+}
+
+export async function updateRecoveryBaselineAction(newBalance: number) {
+  try {
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
+      .update({ starting_balance: newBalance })
+      .eq("user_id", userId);
+
+    if (error) throw error;
+    
+    revalidatePath("/");
+    return { success: true };
+  } catch (err: unknown) {
+    console.error("DEBUG [updateRecoveryBaselineAction]:", err);
+    return { error: getErrorMessage(err) };
+  }
+}
+
+export async function updateWhitelistAction(newWhitelist: string[]) {
+  try {
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
+      .update({ current_dynamic_whitelist: newWhitelist })
+      .eq("user_id", userId);
+
+    if (error) throw error;
+    
+    revalidatePath("/");
+    return { success: true };
+  } catch (err: unknown) {
+    console.error("Помилка БД при оновленні whitelist:", err);
+    return { error: getErrorMessage(err) };
+  }
+}
+
+export async function toggleEngineAction(newState: boolean) {
+  try {
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
+      .update({ is_running: newState })
+      .eq("user_id", userId);
+
+    if (error) throw error;
+    
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (err: unknown) {
+    console.error("Помилка БД [Toggle Engine]:", err);
+    return { error: getErrorMessage(err) };
+  }
+}
+
+export async function triggerKillSwitchAction() {
+  try {
+    const { supabase, userId } = await getSecureClient();
+
+    const { error } = await supabase
+      .from("bot_settings")
+      .update({ 
+        kill_switch_active: true, 
+        is_running: false 
+      })
+      .eq("user_id", userId);
+
+    if (error) throw error;
+    
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (err: unknown) {
+    console.error("Помилка БД [Kill-Switch]:", err);
+    return { error: getErrorMessage(err) };
+  }
+}
+</file>
+
+<file path="app/dashboard/page.tsx">
+"use client";
+
+import React from "react";
+import { usePortfolioStream } from "@/hooks/usePortfolioStream";
+import { useSystemState } from "@/hooks/useSystemState";
+import { useTradeStream } from "@/hooks/useTradeStream";
+import { Wallet, TrendingUp, ShieldAlert, Crosshair, BarChart2, Activity } from "lucide-react";
+import { BotRecoveryPanel } from "@/components/BotRecoveryPanel";
+import { RecentTradesTable } from "@/components/RecentTradesTable";
+import { EquityChart } from "@/components/EquityChart";
+import { ManualOverridesPanel } from "@/components/ManualOverridesPanel";
+import { PingIndicator } from "@/components/PingIndicator";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+
+export default function DashboardPage() {
+  const { snapshot, chartData, analytics, isPortfolioLoading } = usePortfolioStream();
+  const { sysState, isStateLoading } = useSystemState();
+  const {
+    trades,
+    metrics,
+    isLoading: isTradesLoading,
+    totalCount,
+    isFetchingNextPage,
+    hasMore,
+    loadMore,
+    filterSymbol,
+    setFilterSymbol,
+    filterProfit,
+    setFilterProfit
+  } = useTradeStream();
+
+  if (isStateLoading || isPortfolioLoading) {
+    return (
+      <div className="h-full min-h-[60vh] flex items-center justify-center font-mono text-slate-500 animate-pulse">
+        <Activity size={16} className="mr-3 text-blue-500" />
+        INITIALIZING_TERMINAL...
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full p-4 lg:p-6 gap-4 animate-in fade-in duration-500">
+      <header className="flex items-center justify-between border-b border-white/5 pb-6 shrink-0">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Terminal Overview</h1>
+          <p className="text-sm text-slate-500 font-mono mt-1">Live market execution and portfolio metrics</p>
+        </div>
+
+        <div className="flex items-center gap-3">
+
+          <PingIndicator lastPing={sysState?.last_ping} />
+
+          <div className="flex items-center gap-2 px-4 py-2 bg-[#000000]/50 backdrop-blur-xl border border-white/5 rounded-full shadow-lg">
+            <div className={`h-2.5 w-2.5 rounded-full ${sysState?.kill_switch_active ? 'bg-red-500 animate-pulse' : sysState?.is_running ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-yellow-500'}`} />
+            <span className="text-xs font-mono tracking-widest text-slate-300 uppercase">
+              {sysState?.kill_switch_active ? 'SYSTEM HALTED' : sysState?.is_running ? 'ENGINE ONLINE' : 'ENGINE PAUSED'}
+            </span>
+          </div>
+
+        </div>
+      </header>
+
+      <section className="grid grid-cols-2 lg:grid-cols-6 gap-4 shrink-0">
+        <KPICard title="Total Equity" value={`$${Number(snapshot?.total_equity || 0).toFixed(2)}`} icon={Wallet} />
+        <KPICard title="Free Balance" value={`$${Number(snapshot?.free_balance || 0).toFixed(2)}`} icon={Wallet} color="text-slate-400" />
+        <KPICard title="Today's PnL" value={`$${metrics.todayPnl.toFixed(2)}`} icon={TrendingUp} color={metrics.todayPnl >= 0 ? "text-green-400" : "text-red-400"} />
+        <KPICard title="Win Rate" value={`${metrics.winRate.toFixed(1)}%`} icon={Crosshair} />
+        <KPICard title="Exposure" value={`${analytics.exposurePct.toFixed(1)}%`} icon={BarChart2} color="text-yellow-400" />
+        <KPICard title="Max Drawdown" value={`-${analytics.maxDrawdown.toFixed(2)}%`} icon={ShieldAlert} color="text-orange-400" />
+      </section>
+
+      <section className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
+
+        <div className="flex-1 min-w-0 flex flex-col gap-4 min-h-0">
+
+          <div className="flex-1 min-h-0 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl p-4 shadow-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-linear-to-b from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+            <WidgetErrorBoundary widgetName="Equity Chart">
+              <EquityChart data={chartData} />
+            </WidgetErrorBoundary>
+          </div>
+
+          <div className="flex-1 min-h-0 bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden relative">
+            <WidgetErrorBoundary widgetName="Recent Trades">
+              <RecentTradesTable
+                trades={trades}
+                totalCount={totalCount}
+                isLoading={isTradesLoading}
+                isFetchingNextPage={isFetchingNextPage}
+                hasMore={hasMore}
+                loadMore={loadMore}
+                filterSymbol={filterSymbol}
+                setFilterSymbol={setFilterSymbol}
+                filterProfit={filterProfit}
+                setFilterProfit={setFilterProfit}
+              />
+            </WidgetErrorBoundary>
+          </div>
+
+        </div>
+
+        <aside className="w-full lg:w-72 flex flex-col gap-4 shrink-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/10">
+          <BotRecoveryPanel currentBalance={sysState?.starting_balance} />
+          <ManualOverridesPanel
+            isRunning={sysState?.is_running ?? false}
+            killSwitchActive={sysState?.kill_switch_active ?? false}
+          />        </aside>
+
+      </section>
+
+    </div>
+  );
+}
+
+function KPICard({ title, value, icon: Icon, color = "text-white" }: { title: string, value: string | number, icon: any, color?: string }) {
+  return (
+    <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl p-5 flex flex-col gap-3 relative overflow-hidden group hover:border-white/10 transition-colors">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-mono uppercase text-slate-500 tracking-widest">{title}</h3>
+        <Icon size={16} className="text-slate-600 group-hover:text-slate-400 transition-colors" />
+      </div>
+      <div className={`text-2xl font-mono font-bold tracking-tight ${color}`}>
+        {value}
+      </div>
+    </article>
+  );
+}
+</file>
+
+<file path="app/login/components/LoginForm.tsx">
+"use client";
+
+import React, { useState, useTransition } from "react";
+import { loginAction, signupAction } from "@/app/actions/auth";
+import { ShieldAlert, Terminal, LockKeyhole, ArrowRight, Mail } from "lucide-react";
+
+export const LoginForm = () => {
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setErrorMsg(null);
+
+    const formData = new FormData(e.currentTarget);
+
+    startTransition(async () => {
+      const result = isRegisterMode
+        ? await signupAction(formData)
+        : await loginAction(formData);
+
+      if (result?.error) {
+        setErrorMsg(result.error);
+      }
+    });
+  };
+
+  return (
+    <article className="w-full max-w-sm relative group">
+      <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+
+      <div className="relative bg-[#09090b]/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+        <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
+
+        <div className="px-8 pt-8 pb-6 flex flex-col items-center justify-center text-center">
+          <div className="h-12 w-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center mb-4 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+            <Terminal size={24} className="text-blue-400" />
+          </div>
+          <h1 className="font-mono font-bold text-slate-100 text-xl tracking-tight">
+            QUANT_CORE <span className="text-blue-500">SaaS</span>
+          </h1>
+          <p className="text-xs text-slate-500 font-mono mt-1">
+            {isRegisterMode ? "Create New Workspace" : "Client Access Layer"}
+          </p>
+        </div>
+
+        <div className="px-8 pb-8 flex-1">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {errorMsg && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center text-red-400 text-sm font-medium animate-in fade-in slide-in-from-top-2">
+                <ShieldAlert size={16} className="mr-2 shrink-0" />
+                {errorMsg}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest ml-1">
+                Client Email
+              </label>
+              <div className="relative">
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="operator@quant.local"
+                  className="w-full bg-[#000000]/50 border border-white/5 px-4 py-3 pl-10 rounded-xl text-slate-200 font-mono text-sm focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 hover:border-white/10 outline-none transition-all"
+                  disabled={isPending}
+                />
+                <Mail size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest ml-1">
+                Passphrase
+              </label>
+              <div className="relative">
+                <input
+                  name="password"
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="••••••••"
+                  className="w-full bg-[#000000]/50 border border-white/5 px-4 py-3 pl-10 rounded-xl text-slate-200 font-mono text-sm focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 hover:border-white/10 outline-none transition-all"
+                  disabled={isPending}
+                />
+                <LockKeyhole size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isPending}
+              className="w-full mt-2 py-3 bg-white text-black font-semibold rounded-xl hover:bg-slate-200 focus:ring-4 focus:ring-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center text-sm group/btn"
+            >
+              {isPending ? (
+                <span className="animate-pulse">PROCESSING...</span>
+              ) : (
+                <>
+                  {isRegisterMode ? "INITIALIZE WORKSPACE" : "AUTHENTICATE"}
+                  <ArrowRight size={16} className="ml-2 group-hover/btn:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
+
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => setIsRegisterMode(!isRegisterMode)}
+                className="text-[10px] text-slate-500 font-mono uppercase tracking-widest hover:text-blue-400 transition-colors underline-offset-4 hover:underline"
+              >
+                {isRegisterMode ? "Already have access? Sign In" : "New Operator? Request Access"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </article>
+  );
+};
+</file>
+
+<file path="components/PingIndicator.tsx">
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { Wifi, WifiOff } from 'lucide-react';
+
+interface PingIndicatorProps {
+  lastPing?: string;
+}
+
+export const PingIndicator: React.FC<PingIndicatorProps> = ({ lastPing }) => {
+  const [timeAgo, setTimeAgo] = useState<string>("WAITING...");
+  const [status, setStatus] = useState<'healthy' | 'warning' | 'critical'>('warning');
+
+  useEffect(() => {
+    if (!lastPing) return;
+
+    const updatePing = () => {
+      const now = new Date();
+      const pingTime = new Date(lastPing);
+      const diffSec = Math.max(0, Math.floor((now.getTime() - pingTime.getTime()) / 1000));
+
+      if (diffSec < 15) {
+        setStatus('healthy');
+        setTimeAgo(`${diffSec}s ago`);
+      } else if (diffSec < 60) {
+        setStatus('warning');
+        setTimeAgo(`${diffSec}s ago`);
+      } else {
+        setStatus('critical');
+        const mins = Math.floor(diffSec / 60);
+        setTimeAgo(`${mins}m ago`);
+      }
+    };
+
+    updatePing();
+    const interval = setInterval(updatePing, 1000);
+
+    return () => clearInterval(interval);
+  }, [lastPing]);
+
+  const styles = {
+    healthy: { color: 'text-green-400', icon: Wifi, bg: 'bg-green-500/10 border-green-500/20' },
+    warning: { color: 'text-yellow-400', icon: Wifi, bg: 'bg-yellow-500/10 border-yellow-500/20' },
+    critical: { color: 'text-red-400', icon: WifiOff, bg: 'bg-red-500/10 border-red-500/20' }
+  };
+
+  const CurrentStyle = styles[status];
+  const Icon = CurrentStyle.icon;
+
+  return (
+    <div
+      className={`flex items-center gap-2 px-3 py-1.5 border rounded-full transition-colors ${CurrentStyle.bg}`}
+      title="Останній сигнал від бекенд-ядра бота"
+    >
+      <Icon size={12} className={`${CurrentStyle.color} ${status === 'healthy' ? 'animate-pulse' : ''}`} />
+      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center gap-1">
+        Ping: <span className={`font-bold ${CurrentStyle.color}`}>{timeAgo}</span>
+      </span>
+    </div>
+  );
+};
+</file>
+
+<file path="components/TradeDrawer.tsx">
+"use client";
+
+import React, { useEffect } from "react";
+import { Trade } from "@/hooks/useTradeStream";
+import { X, Target, Clock, ArrowRight, Activity, Zap } from "lucide-react";
+
+interface TradeDrawerProps {
+  trade: Trade | null;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const TradeDrawer: React.FC<TradeDrawerProps> = ({ trade, isOpen, onClose }) => {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !trade) return null;
+
+  const isProfit = trade.pnl_usdt >= 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
+        className="relative w-full max-w-md h-full bg-[#050505] border-l border-white/10 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300"
+      >
+        <header className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-[#000000]/50">
+          <div className="flex items-center gap-3">
+            <div className={`h-10 w-10 rounded-xl flex items-center justify-center border ${isProfit ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+              <Target size={20} />
+            </div>
+            <div>
+              <h2 id="drawer-title" className="font-bold text-lg font-mono text-white leading-none">
+                {trade.symbol}
+              </h2>
+              <span className={`text-[10px] font-mono uppercase tracking-widest font-bold ${trade.direction === 'LONG' ? 'text-green-500' : 'text-red-500'}`}>
+                {trade.direction}
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-white/20"
+            aria-label="Закрити панель"
+          >
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+          <div className="flex flex-col items-center justify-center py-8 bg-[#000000]/30 border border-white/5 rounded-2xl">
+            <span className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-2">Realized PnL</span>
+            <div className={`text-4xl font-mono font-bold tracking-tighter ${isProfit ? 'text-green-500' : 'text-red-500'}`}>
+              {isProfit ? '+' : ''}{Number(trade.pnl_usdt).toFixed(2)} USDT
+            </div>
+            <div className={`text-sm font-mono mt-1 ${isProfit ? 'text-green-400/70' : 'text-red-400/70'}`}>
+              ({isProfit ? '+' : ''}{Number(trade.pnl_percent).toFixed(2)}%)
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <DetailCard
+              label="Entry Price"
+              value={`$${Number(trade.entry_price)}`}
+              subValue={new Date(trade.entry_time).toLocaleTimeString()}
+            />
+            <DetailCard
+              label="Exit Price"
+              value={`$${Number(trade.exit_price)}`}
+              subValue={new Date(trade.exit_time).toLocaleTimeString()}
+            />
+          </div>
+
+          <div className="h-px bg-white/5 w-full my-4" />
+
+          <div className="space-y-4">
+            <h3 className="text-xs font-mono uppercase tracking-widest text-slate-500 mb-2">Execution Context</h3>
+
+            <div className="flex items-center justify-between p-3 bg-white/2 border border-white/5 rounded-xl">
+              <div className="flex items-center text-slate-400">
+                <Activity size={16} className="mr-2" />
+                <span className="text-sm font-mono">Close Reason</span>
+              </div>
+              <span className="font-mono text-sm font-bold text-white bg-white/10 px-2 py-1 rounded">
+                {trade.close_reason || "MANUAL"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-white/2 border border-white/5 rounded-xl">
+              <div className="flex items-center text-slate-400">
+                <Zap size={16} className="mr-2 text-yellow-500/70" />
+                <span className="text-sm font-mono">Order Book Imbalance (OBI)</span>
+              </div>
+              <span className="font-mono text-sm font-bold text-white">
+                {Number(trade.obi).toFixed(4)}
+              </span>
+            </div>
+          </div>
+
+        </div>
+
+        <footer className="p-6 border-t border-white/5 bg-[#000000]/50">
+          <p className="text-[10px] text-slate-600 font-mono uppercase text-center tracking-widest">
+            Trade ID: <span className="opacity-50">{trade.id}</span>
+          </p>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+function DetailCard({ label, value, subValue }: { label: string, value: string, subValue: string }) {
+  return (
+    <div className="bg-[#000000]/30 border border-white/5 rounded-xl p-4 flex flex-col">
+      <span className="text-xs font-mono text-slate-500 uppercase tracking-widest mb-1">{label}</span>
+      <span className="text-lg font-mono font-bold text-slate-200">{value}</span>
+      <span className="text-xs font-mono text-slate-600 mt-1 flex items-center">
+        <Clock size={12} className="mr-1" /> {subValue}
+      </span>
+    </div>
+  );
+}
+</file>
+
+<file path="components/WhitelistManager.tsx">
+"use client";
+
+import React, { useState, useEffect, memo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { toast } from "sonner";
+import { ListPlus, Trash2, Plus, Server } from "lucide-react";
+import { updateWhitelistAction } from "@/app/actions/system";
+
+const addPairSchema = z.object({
+  symbol: z.string()
+    .min(1, "Поле не може бути порожнім")
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{2,10}\/[A-Z0-9]{2,10}$/, "Формат: BTC/USDT"),
+});
+
+type AddPairForm = z.infer<typeof addPairSchema>;
+
+interface WhitelistManagerProps {
+  currentWhitelist?: string[];
+}
+
+export const WhitelistManager: React.FC<WhitelistManagerProps> = memo(({ currentWhitelist = [] }) => {
+  const [localList, setLocalList] = useState<string[]>(currentWhitelist);
+  const [isMutating, setIsMutating] = useState(false);
+
+  useEffect(() => {
+    setLocalList(currentWhitelist);
+  }, [currentWhitelist]);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<AddPairForm>({
+    resolver: zodResolver(addPairSchema),
+  });
+
+  const syncWithServer = async (newList: string[], successMsg: string) => {
+    setIsMutating(true);
+    setLocalList(newList);
+
+    try {
+      const result = await updateWhitelistAction(newList);
+      if (result?.error) throw new Error(result.error);
+
+      toast.success("Систему оновлено", { description: successMsg });
+    } catch (err: any) {
+      setLocalList(currentWhitelist);
+      toast.error("Помилка синхронізації", { description: err.message || "Не вдалося зберегти Whitelist." });
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const onAddPair = async (data: AddPairForm) => {
+    if (localList.includes(data.symbol)) {
+      toast.error("Дублікат", { description: `Пара ${data.symbol} вже є в активному списку.` });
+      return;
+    }
+
+    const newList = [...localList, data.symbol];
+    await syncWithServer(newList, `Пару ${data.symbol} додано до роботи.`);
+    reset();
+  };
+
+  const onRemovePair = async (symbolToRemove: string) => {
+    const newList = localList.filter((sym) => sym !== symbolToRemove);
+    await syncWithServer(newList, `Пару ${symbolToRemove} видалено з роботи.`);
+  };
+
+  return (
+    <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col relative overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between relative z-10">
+        <div className="flex items-center">
+          <ListPlus size={16} className="mr-2 text-blue-400" aria-hidden="true" />
+          <h2 className="font-mono text-sm tracking-widest text-slate-200 uppercase">Active Whitelist</h2>
+        </div>
+        <div className="flex items-center text-[10px] font-mono text-slate-500 bg-[#000000]/50 px-2 py-1 rounded">
+          <Server size={10} className={`mr-1 ${isMutating ? 'animate-pulse text-yellow-500' : 'text-green-500'}`} />
+          {localList.length} PAIRS
+        </div>
+      </div>
+
+      <div className="p-5 flex-1 flex flex-col gap-4 relative z-10">
+        <form onSubmit={handleSubmit(onAddPair)} noValidate className="flex flex-col gap-1">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                id="symbol-input"
+                type="text"
+                placeholder="EX: SOL/USDT"
+                className={`w-full bg-[#000000]/50 border px-3 py-2.5 rounded-xl text-slate-100 font-mono text-sm uppercase placeholder:text-slate-700 focus:ring-1 focus:outline-none transition-all ${errors.symbol ? 'border-red-500/50 focus:border-red-500/50' : 'border-white/10 focus:border-blue-500/50 hover:border-white/20'
+                  }`}
+                {...register("symbol")}
+                disabled={isMutating}
+                aria-invalid={!!errors.symbol}
+                aria-describedby={errors.symbol ? "symbol-error" : undefined}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isMutating}
+              aria-label="Додати торгову пару"
+              className="px-4 bg-white/5 border border-white/5 text-slate-300 rounded-xl hover:bg-white/10 hover:text-white focus:ring-2 focus:ring-white/20 disabled:opacity-50 transition-all flex items-center justify-center shrink-0"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+          {errors.symbol && (
+            <span id="symbol-error" className="text-xs text-red-400 font-mono ml-1 mt-1">
+              {errors.symbol.message}
+            </span>
+          )}
+        </form>
+
+        <div className="flex-1 bg-[#000000]/30 border border-white/5 rounded-xl overflow-hidden flex flex-col">
+          {localList.length === 0 ? (
+            <div className="p-6 text-center text-slate-600 font-mono text-xs flex flex-col items-center justify-center h-32">
+              <span className="opacity-50">WHITELIST IS EMPTY</span>
+              <span className="text-[10px] mt-1">Engine will not execute any trades</span>
+            </div>
+          ) : (
+            <ul className="max-h-48 overflow-y-auto p-2 space-y-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+              {localList.map((symbol) => (
+                <li
+                  key={symbol}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/5 transition-colors group"
+                >
+                  <span className="font-mono text-sm font-bold text-slate-200">{symbol}</span>
+                  <button
+                    onClick={() => onRemovePair(symbol)}
+                    disabled={isMutating}
+                    aria-label={`Видалити ${symbol} зі списку`}
+                    className="text-slate-600 hover:text-red-400 focus:outline-none focus:text-red-400 transition-colors disabled:opacity-50 p-1"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+});
+
+WhitelistManager.displayName = "WhitelistManager";
+</file>
+
+<file path="hooks/usePortfolioStream.ts">
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+export function usePortfolioStream() {
+  const [snapshot, setSnapshot] = useState<any>(null);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchPortfolio() {
+      try {
+        const { data: snapData, error: snapError } = await supabase
+          .from("portfolio_snapshots")
+          .select("*")
+          .order("timestamp", { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (snapError && snapError.code !== 'PGRST116') throw snapError;
+        if (isMounted && snapData) setSnapshot(snapData);
+
+        const { data: historyData, error: historyError } = await supabase
+          .from("portfolio_snapshots")
+          .select("timestamp, total_equity")
+          .order("timestamp", { ascending: false })
+          .limit(150);
+
+        if (historyError) throw historyError;
+
+        if (isMounted && historyData) {
+          const formattedData = historyData.reverse().map((item: any) => ({
+            time: Math.floor(new Date(item.timestamp).getTime() / 1000),
+            value: Number(item.total_equity)
+          }));
+          
+          setChartData(formattedData);
+        }
+      } catch (err) {
+        console.error("Помилка завантаження портфеля:", err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    fetchPortfolio();
+
+    const channelName = `snapshots_channel_${crypto.randomUUID()}`;
+    const channel = supabase.channel(channelName);
+
+    channel.on(
+      "postgres_changes", 
+      { event: "INSERT", schema: "public", table: "portfolio_snapshots" }, 
+      (payload) => {
+        const newSnap = payload.new;
+        setSnapshot(newSnap);
+        
+        const newTimeSec = Math.floor(new Date(newSnap.timestamp).getTime() / 1000);
+
+        setChartData((currentData) => {
+          if (currentData.length === 0) return [{ time: newTimeSec, value: Number(newSnap.total_equity) }];
+          
+          const lastPoint = currentData[currentData.length - 1];
+
+          if (lastPoint.time === newTimeSec) {
+            const updatedData = [...currentData];
+            updatedData[updatedData.length - 1] = { time: newTimeSec, value: Number(newSnap.total_equity) };
+            return updatedData;
+          }
+
+          if (newTimeSec > lastPoint.time) {
+            return [
+              ...currentData,
+              { time: newTimeSec, value: Number(newSnap.total_equity) }
+            ];
+          }
+
+          return currentData;
+        });
+      }
+    ).subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const analytics = useMemo(() => {
+    let peak = 0;
+    let maxDrawdown = 0;
+    
+    chartData.forEach(point => {
+      if (point.value > peak) peak = point.value;
+      const currentDrawdown = peak > 0 ? ((peak - point.value) / peak) * 100 : 0;
+      if (currentDrawdown > maxDrawdown) maxDrawdown = currentDrawdown;
+    });
+
+    const total = snapshot ? Number(snapshot.total_equity) : 0;
+    const free = snapshot ? Number(snapshot.free_balance) : 0;
+    const exposureUsdt = Math.max(0, total - free);
+    const exposurePct = total > 0 ? (exposureUsdt / total) * 100 : 0;
+
+    return { maxDrawdown, exposureUsdt, exposurePct };
+  }, [chartData, snapshot]);
+
+  return { snapshot, chartData, analytics, isPortfolioLoading: isLoading };
+}
+</file>
+
+<file path="hooks/useSystemState.ts">
+"use client";
+
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { playTerminalSound } from "@/lib/audio";
+
+export interface SystemState {
+  id: string;
+  user_id: string;
+  is_running: boolean;
+  kill_switch_active: boolean;
+  current_dynamic_whitelist: string[];
+  last_ping: string;
+  starting_balance: number;
+  leverage: number;
+  risk_per_trade_pct: number;
+}
+
+export function useSystemState() {
+  const [sysState, setSysState] = useState<SystemState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchState() {
+      try {
+        const { data, error } = await supabase
+          .from("bot_settings")
+          .select("*")
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST116') {
+            console.log("SystemState: Налаштування ще не створені.");
+            return;
+          }
+          throw error;
+        }
+        
+        if (isMounted && data) {
+          setSysState(data as SystemState);
+        }
+      } catch (err) {
+        console.error("Помилка завантаження стану системи:", err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    fetchState();
+
+    const channelName = `state_channel_${crypto.randomUUID()}`;
+    const channel = supabase.channel(channelName);
+
+    channel.on(
+      "postgres_changes", 
+      { event: "UPDATE", schema: "public", table: "bot_settings" }, 
+      (payload) => {
+        const newState = payload.new as SystemState;
+
+        setSysState((prevState) => {
+          if (prevState && !prevState.kill_switch_active && newState.kill_switch_active) {
+            playTerminalSound('siren');
+            toast.warning("🚨 СИСТЕМНА ТРИВОГА", {
+              description: "Kill-Switch активовано! Торгівлю зупинено.",
+            });
+          }
+
+          if (prevState && prevState.is_running !== newState.is_running && !newState.kill_switch_active) {
+            if (newState.is_running) {
+               toast.success("Engine Online (Remote Update)");
+            } else {
+               toast.warning("Engine Paused (Remote Update)");
+            }
+          }
+
+          return newState;
+        });
+      }
+    ).subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []); 
+
+  return { sysState, isStateLoading: isLoading };
+}
+</file>
+
+<file path="hooks/useTradeStream.ts">
+"use client";
+
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { playTerminalSound } from "@/lib/audio";
+
+export interface Trade {
+  id: string;
+  user_id: string; 
+  symbol: string;
+  direction: 'LONG' | 'SHORT';
+  entry_price: number;
+  exit_price: number;
+  pnl_usdt: number;
+  pnl_percent: number;
+  entry_time: string;
+  exit_time: string;
+  close_reason: string | null;
+  obi: number;
+}
+
+export function useTradeStream() {
+  const [filterSymbol, setFilterSymbol] = useState<string>('ALL');
+  const [filterProfit, setFilterProfit] = useState<'ALL' | 'PROFIT' | 'LOSS'>('ALL');
+  
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
+  const pageSize = 50;
+  const supabase = createClient();
+
+  useEffect(() => {
+    setTrades([]);
+    setPage(1);
+    setHasMore(true);
+    setIsLoading(true);
+  }, [filterSymbol, filterProfit]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchTrades() {
+      if (page > 1) setIsFetchingNextPage(true);
+      
+      try {
+        let query = supabase
+          .from("trades")
+          .select("*", { count: "exact" })
+          .order("exit_time", { ascending: false });
+
+        if (filterSymbol !== 'ALL') query = query.eq('symbol', filterSymbol);
+        if (filterProfit === 'PROFIT') query = query.gt('pnl_usdt', 0);
+        else if (filterProfit === 'LOSS') query = query.lte('pnl_usdt', 0);
+
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+        query = query.range(from, to);
+
+        const { data, count, error } = await query;
+
+        if (error) throw error;
+
+        if (isMounted) {
+          const fetchedTrades = data as Trade[] || [];
+          
+          setTrades(prev => page === 1 ? fetchedTrades : [...prev, ...fetchedTrades]);
+          if (count !== null) setTotalCount(count);
+          setHasMore(fetchedTrades.length === pageSize);
+        }
+      } catch (err) {
+        console.error("Помилка завантаження угод:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          setIsFetchingNextPage(false);
+        }
+      }
+    }
+
+    fetchTrades();
+
+    return () => { isMounted = false; };
+  }, [page, filterSymbol, filterProfit]);
+
+  const loadMore = useCallback(() => {
+    if (!isFetchingNextPage && hasMore) {
+      setPage(p => p + 1);
+    }
+  }, [isFetchingNextPage, hasMore]);
+
+  useEffect(() => {
+    const channelName = `trades_channel_${crypto.randomUUID()}`;
+    const channel = supabase.channel(channelName);
+
+    channel.on(
+      "postgres_changes", 
+      { event: "INSERT", schema: "public", table: "trades" }, 
+      (payload) => {
+        const newTrade = payload.new as Trade;
+
+        if (newTrade.pnl_usdt > 0) playTerminalSound('profit');
+        else playTerminalSound('loss');
+
+        const matchesSymbol = filterSymbol === 'ALL' || newTrade.symbol === filterSymbol;
+        const matchesProfit = filterProfit === 'ALL' || 
+          (filterProfit === 'PROFIT' && newTrade.pnl_usdt > 0) || 
+          (filterProfit === 'LOSS' && newTrade.pnl_usdt <= 0);
+
+        if (matchesSymbol && matchesProfit) {
+          setTrades(prev => [newTrade, ...prev]);
+          setTotalCount(prev => prev + 1);
+        }
+      }
+    ).subscribe();
+
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
+  }, [filterSymbol, filterProfit]);
+
+  const metrics = useMemo(() => {
+    const wins = trades.filter(t => t.pnl_usdt > 0).length;
+    const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
+
+    const today = new Date().toISOString().split('T')[0];
+    const todayPnl = trades
+      .filter(t => t.exit_time.startsWith(today))
+      .reduce((acc, curr) => acc + Number(curr.pnl_usdt), 0);
+
+    return { winRate, todayPnl };
+  }, [trades]);
+
+  return { 
+    trades, metrics, totalCount, isLoading, isFetchingNextPage, hasMore, loadMore,
+    filterSymbol, setFilterSymbol, filterProfit, setFilterProfit
+  };
+}
+</file>
+
+<file path="app/dashboard/layout.tsx">
+"use client";
+
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { Activity, Settings, TerminalSquare, LogOut } from "lucide-react";
+import { useTerminalHotkeys } from "@/hooks/useTerminalHotkeys";
+import { createClient } from "@/lib/supabase/client";
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
+  useTerminalHotkeys();
+
+  useEffect(() => {
+    const verifyAuth = async () => {
+      const supabase = createClient();
+      const { data: { user }, error } = await supabase.auth.getUser();
+
+      if (error || !user) {
+        router.replace("/login");
+      } else {
+        setIsAuthorized(true);
+      }
+    };
+
+    verifyAuth();
+  }, [router]);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+  };
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center font-mono text-slate-500 animate-pulse">
+        <Activity size={16} className="mr-3 text-blue-500" />
+        VERIFYING_ACCESS_TOKEN...
+      </div>
+    );
+  }
+
+  const navItems = [
+    {
+      name: "Terminal",
+      href: "/dashboard",
+      icon: TerminalSquare,
+      exact: true,
+    },
+    {
+      name: "Setting",
+      href: "/dashboard/settings",
+      icon: Settings,
+      exact: false,
+    },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-slate-200 font-sans flex">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-blue-900/5 via-[#050505] to-[#050505] pointer-events-none -z-10" />
+
+      <aside className="w-64 border-r border-white/5 bg-[#050505]/80 backdrop-blur-xl flex flex-col shrink-0 hidden md:flex">
+        <div className="h-20 flex items-center px-6 border-b border-white/5 shrink-0">
+          <div className="h-8 w-8 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center justify-center mr-3">
+            <Activity size={16} className="text-blue-400" />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-mono font-bold text-sm tracking-tight text-white">QUANT_CORE</span>
+            <span className="text-[10px] text-slate-500 font-mono">v1.0-prod</span>
+          </div>
+        </div>
+
+        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+          <p className="px-2 text-xs font-mono font-semibold text-slate-500 uppercase tracking-widest mb-4">
+            Menu
+          </p>
+          {navItems.map((item) => {
+            const isActive = item.exact
+              ? pathname === item.href
+              : pathname.startsWith(item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${isActive
+                  ? "bg-blue-500/10 text-blue-400"
+                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                  }`}
+              >
+                <item.icon
+                  size={18}
+                  className={`mr-3 transition-colors ${isActive ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"
+                    }`}
+                />
+                {item.name}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="p-4 border-t border-white/5 shrink-0">
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all group"
+          >
+            <LogOut size={18} className="mr-3 text-slate-500 group-hover:text-red-400 transition-colors" />
+            Log Out
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        <header className="md:hidden h-16 border-b border-white/5 flex items-center justify-between px-4 shrink-0 bg-[#050505]/80 backdrop-blur-xl">
+          <div className="flex items-center">
+            <Activity size={20} className="text-blue-400 mr-2" />
+            <span className="font-mono font-bold text-sm text-white">QUANT_CORE</span>
+          </div>
+          <button onClick={handleLogout} className="text-slate-400 hover:text-red-400">
+            <LogOut size={20} />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/sonner"
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "QUANT_CORE | Trading Dashboard",
+  description: "Automated trading system execution and monitoring environment.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+    >
+      <body className="min-h-full flex flex-col bg-[#050505] text-slate-200">
+        {children}
+        <Toaster theme="dark" position="bottom-right" richColors />
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/page.tsx">
+import { redirect } from "next/navigation";
+
+export default function HomePage() {
+  redirect("/dashboard");
+}
+</file>
+
+<file path="components/RecentTradesTable.tsx">
+"use client";
+
+import React, { useRef, useState, useEffect, memo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { Filter } from 'lucide-react';
+import { TradeDrawer } from './TradeDrawer';
+import { Trade } from '@/hooks/useTradeStream';
+
+interface RecentTradesTableProps {
+  trades: Trade[];
+  totalCount: number;
+  isLoading: boolean;
+  isFetchingNextPage: boolean;
+  hasMore: boolean;
+  loadMore: () => void;
+  filterSymbol: string;
+  setFilterSymbol: (s: string) => void;
+  filterProfit: string;
+  setFilterProfit: (s: 'ALL' | 'PROFIT' | 'LOSS') => void;
+}
+
+export const RecentTradesTable: React.FC<RecentTradesTableProps> = memo(({
+  trades, totalCount, isLoading, isFetchingNextPage, hasMore, loadMore,
+  filterSymbol, setFilterSymbol, filterProfit, setFilterProfit
+}) => {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const rowVirtualizer = useVirtualizer({
+    count: trades.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 57,
+    overscan: 10,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
+  useEffect(() => {
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) return;
+
+    if (
+      lastItem.index >= trades.length - 5 &&
+      hasMore &&
+      !isFetchingNextPage
+    ) {
+      loadMore();
+    }
+  }, [virtualItems, trades.length, hasMore, isFetchingNextPage, loadMore]);
+
+  return (
+    <div className="w-full flex flex-col h-full bg-[#09090b] text-sm relative">
+
+      {/* Фільтри */}
+      <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between shrink-0">
+        <div className="flex items-center space-x-4">
+          <Filter size={16} className="text-slate-500" />
+
+          <select
+            value={filterSymbol}
+            onChange={(e) => setFilterSymbol(e.target.value)}
+            className="bg-[#09090b] border border-slate-700 text-slate-300 text-xs rounded py-1.5 px-2 outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="ALL">All Pairs</option>
+            <option value="BTC/USDT">BTC/USDT</option>
+            <option value="ETH/USDT">ETH/USDT</option>
+            <option value="SOL/USDT">SOL/USDT</option>
+          </select>
+
+          <select
+            value={filterProfit}
+            onChange={(e) => setFilterProfit(e.target.value as any)}
+            className="bg-[#09090b] border border-slate-700 text-slate-300 text-xs rounded py-1.5 px-2 outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="ALL">All PnL</option>
+            <option value="PROFIT">Winners Only</option>
+            <option value="LOSS">Losers Only</option>
+          </select>
+        </div>
+
+        <div className="text-xs text-slate-500 font-mono">
+          Loaded {trades.length} of {totalCount}
+        </div>
+      </div>
+
+      {/* Заголовки таблиці */}
+      <div className="flex sticky top-0 z-10 bg-slate-900/90 backdrop-blur border-b border-slate-800 text-xs text-slate-400 uppercase font-medium shrink-0">
+        <div className="px-6 py-3 w-[20%]">Time</div>
+        <div className="px-6 py-3 w-[20%]">Pair</div>
+        <div className="px-6 py-3 w-[15%]">Side</div>
+        <div className="px-6 py-3 w-[25%]">Entry / Exit</div>
+        <div className="px-6 py-3 w-[20%] text-right">PnL (USDT)</div>
+      </div>
+
+      {/* Скролл контейнер */}
+      <div ref={parentRef} className="flex-1 overflow-auto outline-none">
+        {isLoading && trades.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-slate-500 animate-pulse font-mono">
+            FETCHING_TRADES...
+          </div>
+        ) : trades.length > 0 ? (
+          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            {virtualItems.map((virtualRow) => {
+              const trade = trades[virtualRow.index];
+              return (
+                <div
+                  key={`${trade.id}-${virtualRow.index}`}
+                  onClick={() => {
+                    setSelectedTrade(trade);
+                    setIsDrawerOpen(true);
+                  }}
+                  className="flex items-center absolute top-0 left-0 w-full border-b border-slate-800/50 hover:bg-slate-800/20 cursor-pointer transition-colors"
+                  style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  <div className="px-6 py-4 w-[20%] font-mono text-slate-400">{new Date(trade.exit_time).toLocaleTimeString()}</div>
+                  <div className="px-6 py-4 w-[20%] font-bold text-slate-200">{trade.symbol}</div>
+                  <div className="px-6 py-4 w-[15%]">
+                    <span className={`px-2 py-1 rounded text-xs font-bold tracking-wider ${trade.direction === 'LONG' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{trade.direction}</span>
+                  </div>
+                  <div className="px-6 py-4 w-[25%] font-mono text-slate-300">{Number(trade.entry_price)} <span className="text-slate-600 px-1">→</span> {Number(trade.exit_price)}</div>
+                  <div className={`px-6 py-4 w-[20%] text-right font-mono font-bold ${trade.pnl_usdt >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {trade.pnl_usdt > 0 ? '+' : ''}{Number(trade.pnl_usdt).toFixed(2)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center text-slate-500">Записів не знайдено</div>
+        )}
+
+        {/* Індикатор завантаження нових даних знизу списку */}
+        {isFetchingNextPage && (
+          <div className="py-4 text-center text-xs text-slate-500 font-mono animate-pulse">
+            LOADING_MORE_DATA...
+          </div>
+        )}
+      </div>
+
+      <TradeDrawer trade={selectedTrade} isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+    </div>
+  );
+});
+
+RecentTradesTable.displayName = 'RecentTradesTable';
+</file>
+
+<file path="proxy.ts">
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+
+export async function proxy(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isAuthRoute = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/register');
+
+  if (!user && !isAuthRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  if (user && isAuthRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
+    return NextResponse.redirect(url);
+  }
+
+  return supabaseResponse;
+}
+
+export const config = {
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
+};
+</file>
+
+<file path="components/BotRecoveryPanel.tsx">
+"use client";
+
+import React, { memo, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { toast } from "sonner";
+import { HardDrive } from "lucide-react";
+import { updateRecoveryBaselineAction } from "@/app/actions/system";
+
+const recoverySchema = z.object({
+  startingBalance: z.number({
+    message: "Введіть коректне число",
+  })
+    .min(10, "Баланс занадто малий для торгівлі")
+    .max(1000000, "Перевищено ліміт безпеки"),
+});
+
+type RecoveryForm = z.infer<typeof recoverySchema>;
+
+interface BotRecoveryPanelProps {
+  currentBalance?: number;
+}
+
+export const BotRecoveryPanel: React.FC<BotRecoveryPanelProps> = memo(({ currentBalance }) => {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting, isDirty },
+  } = useForm<RecoveryForm>({
+    resolver: zodResolver(recoverySchema),
+    defaultValues: {
+      startingBalance: currentBalance ?? 145.62,
+    },
+  });
+
+  useEffect(() => {
+    if (currentBalance !== undefined && !isDirty) {
+      reset({ startingBalance: currentBalance }, { keepDirty: false });
+    }
+  }, [currentBalance, reset, isDirty]);
+
+  const onSubmit = async (data: RecoveryForm) => {
+    try {
+      const result = await updateRecoveryBaselineAction(data.startingBalance);
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      toast.success("System Updated", {
+        description: `Новий baseline: $${data.startingBalance.toFixed(2)}. Бот захищений.`,
+        icon: <HardDrive className="text-green-500" size={16} />,
+      });
+
+      reset({ startingBalance: data.startingBalance });
+    } catch (err: any) {
+      console.error("Помилка оновлення recovery baseline:", err);
+      toast.error("Помилка синхронізації", {
+        description: err.message || "Не вдалося зберегти налаштування на сервері.",
+      });
+    }
+  };
+
+  return (
+    <article className="bg-[#050505]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col relative overflow-hidden group">
+      <div className="absolute -inset-1 bg-linear-to-br from-blue-600/10 to-transparent blur opacity-50 pointer-events-none"></div>
+
+      <div className="px-5 py-4 border-b border-white/5 flex items-center relative z-10">
+        <HardDrive size={16} className="mr-2 text-blue-400" />
+        <h2 className="font-mono text-sm tracking-widest text-slate-200 uppercase">Recovery Baseline</h2>
+      </div>
+
+      <div className="p-5 flex-1 flex flex-col justify-center relative z-10">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-mono">$</span>
+              <input
+                type="number"
+                step="0.01"
+                className={`w-full bg-[#000000]/50 border pl-8 pr-4 py-3 rounded-xl text-slate-100 font-mono text-sm focus:ring-1 focus:outline-none transition-all ${errors.startingBalance
+                  ? 'border-red-500/50 focus:border-red-500/50'
+                  : 'border-white/10 focus:border-blue-500/50 hover:border-white/20'
+                  }`}
+                {...register('startingBalance', { valueAsNumber: true })}
+                disabled={isSubmitting}
+              />
+            </div>
+            {errors.startingBalance && (
+              <span className="text-xs text-red-400 font-mono">
+                {errors.startingBalance.message}
+              </span>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting || !isDirty}
+            className="w-full py-3 bg-white/5 text-slate-300 border border-white/5 rounded-xl hover:bg-white/10 hover:text-white focus:ring-2 focus:ring-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all font-mono text-xs uppercase tracking-widest flex items-center justify-center"
+          >
+            {isSubmitting ? (
+              <span className="flex items-center">
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                SYNCING...
+              </span>
+            ) : (
+              "UPDATE SYSTEM"
+            )}
+          </button>
+        </form>
+      </div>
+    </article>
+  );
+});
+
+BotRecoveryPanel.displayName = "BotRecoveryPanel";
+</file>
+
+<file path="components/EquityChart.tsx">
+"use client";
+
+import React, { useEffect, useRef, memo } from "react";
+import { createChart, ColorType, IChartApi, ISeriesApi, AreaSeries, Time, DeepPartial, ChartOptions } from "lightweight-charts";
+
+interface ChartDataPoint {
+  time: number;
+  value: number;
+}
+
+interface EquityChartProps {
+  data: ChartDataPoint[];
+}
+
+const chartOptions: DeepPartial<ChartOptions> = {
+  layout: {
+    background: { type: ColorType.Solid, color: "transparent" },
+    textColor: "#64748b",
+    fontFamily: "Geist Mono, ui-monospace, monospace",
+  },
+  grid: {
+    vertLines: { color: "rgba(255, 255, 255, 0.03)" },
+    horzLines: { color: "rgba(255, 255, 255, 0.03)" },
+  },
+  timeScale: {
+    timeVisible: true,
+    secondsVisible: false,
+    borderColor: "#1e293b",
+    barSpacing: 10,
+  },
+};
+
+export const EquityChart: React.FC<EquityChartProps> = memo(({ data }) => {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartApiRef = useRef<IChartApi | null>(null);
+  const seriesApiRef = useRef<ISeriesApi<"Area"> | null>(null);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    const chart = createChart(chartContainerRef.current, {
+      ...chartOptions,
+      width: chartContainerRef.current.clientWidth,
+      height: chartContainerRef.current.clientHeight || 300,
+    });
+
+    chartApiRef.current = chart;
+
+    const series = chart.addSeries(AreaSeries, {
+      lineColor: "#3b82f6",
+      topColor: "rgba(59, 130, 246, 0.2)",
+      bottomColor: "rgba(59, 130, 246, 0.0)",
+      lineWidth: 2,
+    });
+
+    seriesApiRef.current = series;
+
+    const handleResize = () => {
+      if (chartContainerRef.current && chartApiRef.current) {
+        chartApiRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight || 300,
+        });
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(chartContainerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      chart.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const series = seriesApiRef.current;
+    const chart = chartApiRef.current;
+
+    if (!series || !chart || !data || data.length === 0) return;
+
+    const uniqueSortedData = Array.from(new Map(data.map(item => [item.time, item])).values())
+      .sort((a, b) => a.time - b.time)
+      .map(item => ({
+        time: item.time as Time,
+        value: item.value
+      }));
+
+    series.setData(uniqueSortedData);
+    chart.timeScale().fitContent();
+
+  }, [data]);
+
+  return (
+    <div className="w-full h-full relative group flex-1 min-h-[300px]">
+      {data.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center text-slate-500 font-mono text-sm z-10 bg-[#050505]/50">
+          Завантаження історії...
+        </div>
+      )}
+      <div ref={chartContainerRef} className="absolute inset-0" />
+    </div>
+  );
+});
+
+EquityChart.displayName = "EquityChart";
+</file>
+
+<file path="package.json">
+{
+  "name": "quant-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.106.1",
+    "@tanstack/react-virtual": "^3.13.23",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jose": "^6.2.2",
+    "lightweight-charts": "^5.1.0",
+    "lucide-react": "^1.7.0",
+    "next": "16.2.1",
+    "next-themes": "^0.4.6",
+    "radix-ui": "^1.4.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-hook-form": "^7.72.0",
+    "react-resizable-panels": "^4.8.0",
+    "shadcn": "^4.1.0",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
+</files>

@@ -48,7 +48,7 @@ export const ManualOverridesPanel: React.FC<ManualOverridesPanelProps> = memo(({
             </p>
           </div>
           <button
-            onClick={() => toggleEngine(isRunning)}
+            onClick={() => toggleEngine(!isRunning)}
             disabled={isMutating || killSwitchActive}
             className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${isRunning ? 'bg-green-500/20 border border-green-500/50' : 'bg-white/5 border border-white/10'}`}
           >

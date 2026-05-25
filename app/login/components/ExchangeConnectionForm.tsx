@@ -74,9 +74,15 @@ export const ExchangeConnectionForm: React.FC<Props> = ({ isConnected }) => {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
           <div className="p-4 bg-yellow-500/5 border border-yellow-500/10 rounded-xl flex gap-3">
             <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
-            <div className="text-xs text-slate-400 font-mono leading-relaxed">
-              Переконайтеся, що ви увімкнули <span className="text-slate-200 font-bold">Enable Futures</span> для ваших ключів.
-              Забороніть <span className="text-slate-200 font-bold">Enable Withdrawals</span>. Ключі зберігаються у зашифрованому вигляді (AES-256-GCM) і ніколи не передаються на клієнт.
+            <div className="text-xs text-slate-400 font-mono leading-relaxed space-y-2">
+              <p className="font-bold text-slate-200 uppercase tracking-widest text-[10px]">Вимоги до API-ключа:</p>
+              <ul className="list-disc list-inside pl-1 space-y-1">
+                <li>Переконайтеся, що у вас фізично <strong>відкритий ф'ючерсний акаунт</strong> на Binance (пройдено квіз).</li>
+                <li>Увімкніть дозвіл <strong>Enable Futures</strong> у налаштуваннях ключа.</li>
+                <li>Встановіть обмеження доступу за IP та додайте IP нашого сервера: <code className="bg-black/50 px-1 py-0.5 rounded text-blue-400">178.104.65.93</code> (або ваші актуальні IP).</li>
+                <li>Категорично забороніть <strong>Enable Withdrawals</strong>.</li>
+              </ul>
+              <p className="text-[10px] opacity-70 mt-2">Ключі шифруються за стандартом AES-256-GCM.</p>
             </div>
           </div>
 

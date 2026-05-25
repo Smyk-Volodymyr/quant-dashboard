@@ -14,9 +14,15 @@ export function usePortfolioStream() {
 
     async function fetchPortfolio() {
       try {
+        // 1. Отримуємо поточного юзера
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // 2. Фільтруємо знімок тільки для цього юзера
         const { data: snapData, error: snapError } = await supabase
           .from("portfolio_snapshots")
           .select("*")
+          .eq("user_id", user.id) // 👈 ДОДАНО ФІЛЬТР
           .order("timestamp", { ascending: false })
           .limit(1)
           .single();
@@ -27,6 +33,7 @@ export function usePortfolioStream() {
         const { data: historyData, error: historyError } = await supabase
           .from("portfolio_snapshots")
           .select("timestamp, total_equity")
+          .eq("user_id", user.id) // 👈 ДОДАНО ФІЛЬТР
           .order("timestamp", { ascending: false })
           .limit(150);
 
@@ -40,6 +47,47 @@ export function usePortfolioStream() {
           
           setChartData(formattedData);
         }
+
+        const channelName = `snapshots_channel_${crypto.randomUUID()}`;
+        const channel = supabase.channel(channelName);
+
+        channel.on(
+          "postgres_changes", 
+          { 
+            event: "INSERT", 
+            schema: "public", 
+            table: "portfolio_snapshots",
+            filter: `user_id=eq.${user.id}` // 👈 ДОДАНО ФІЛЬТР ДЛЯ WEBSOCKET
+          }, 
+          (payload) => {
+            const newSnap = payload.new;
+            setSnapshot(newSnap);
+            
+            const newTimeSec = Math.floor(new Date(newSnap.timestamp).getTime() / 1000);
+
+            setChartData((currentData) => {
+              if (currentData.length === 0) return [{ time: newTimeSec, value: Number(newSnap.total_equity) }];
+              
+              const lastPoint = currentData[currentData.length - 1];
+
+              if (lastPoint.time === newTimeSec) {
+                const updatedData = [...currentData];
+                updatedData[updatedData.length - 1] = { time: newTimeSec, value: Number(newSnap.total_equity) };
+                return updatedData;
+              }
+
+              if (newTimeSec > lastPoint.time) {
+                return [
+                  ...currentData,
+                  { time: newTimeSec, value: Number(newSnap.total_equity) }
+                ];
+              }
+
+              return currentData;
+            });
+          }
+        ).subscribe();
+
       } catch (err) {
         console.error("Помилка завантаження портфеля:", err);
       } finally {
@@ -49,44 +97,8 @@ export function usePortfolioStream() {
 
     fetchPortfolio();
 
-    const channelName = `snapshots_channel_${crypto.randomUUID()}`;
-    const channel = supabase.channel(channelName);
-
-    channel.on(
-      "postgres_changes", 
-      { event: "INSERT", schema: "public", table: "portfolio_snapshots" }, 
-      (payload) => {
-        const newSnap = payload.new;
-        setSnapshot(newSnap);
-        
-        const newTimeSec = Math.floor(new Date(newSnap.timestamp).getTime() / 1000);
-
-        setChartData((currentData) => {
-          if (currentData.length === 0) return [{ time: newTimeSec, value: Number(newSnap.total_equity) }];
-          
-          const lastPoint = currentData[currentData.length - 1];
-
-          if (lastPoint.time === newTimeSec) {
-            const updatedData = [...currentData];
-            updatedData[updatedData.length - 1] = { time: newTimeSec, value: Number(newSnap.total_equity) };
-            return updatedData;
-          }
-
-          if (newTimeSec > lastPoint.time) {
-            return [
-              ...currentData,
-              { time: newTimeSec, value: Number(newSnap.total_equity) }
-            ];
-          }
-
-          return currentData;
-        });
-      }
-    ).subscribe();
-
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
     };
   }, []);
 
